@@ -109,16 +109,25 @@ class JsonStore:
 class PgStore:
     """PostgreSQL storage for production (Render)."""
     def __init__(self, database_url):
-        import psycopg2
         # Render uses postgres:// but psycopg2 needs postgresql://
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         self.database_url = database_url
-        self._init_db()
+        print(f"[DB] Connecting to PostgreSQL...")
+        import time
+        for attempt in range(3):
+            try:
+                self._init_db()
+                return
+            except Exception as e:
+                print(f"[DB] Attempt {attempt+1}/3 failed: {e}")
+                if attempt < 2:
+                    time.sleep(2)
+        raise Exception("Could not connect to PostgreSQL after 3 attempts")
 
     def _conn(self):
         import psycopg2
-        return psycopg2.connect(self.database_url)
+        return psycopg2.connect(self.database_url, sslmode='require')
 
     def _init_db(self):
         conn = self._conn()
@@ -146,7 +155,7 @@ class PgStore:
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ PostgreSQL table 'orders' ready")
+        print("[DB] PostgreSQL table 'orders' ready")
 
     def _row_to_dict(self, row):
         return {
