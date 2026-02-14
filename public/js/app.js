@@ -227,9 +227,7 @@
         <td><strong>#${o.id}</strong></td>
         <td>${formatDate(o.createdDate)}</td>
         <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${esc(o.productName)}</td>
         <td>${o.quantity} ${esc(o.unit)}</td>
-        <td>${esc(o.customer)}</td>
         <td>${formatDateShort(o.deliveryDate)}</td>
         <td>${statusBadge(o.status)}</td>
         <td>${o.packingBags != null ? o.packingBags + ' bao' : '—'}</td>
@@ -255,9 +253,7 @@
         <td><strong>#${o.id}</strong></td>
         <td>${formatDate(o.createdDate)}</td>
         <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${esc(o.productName)}</td>
         <td>${o.quantity} ${esc(o.unit)}</td>
-        <td>${esc(o.customer)}</td>
         <td>${formatDateShort(o.deliveryDate)}</td>
         <td>${statusBadge(o.status)}</td>
         <td>
@@ -279,10 +275,8 @@
 
         const body = {
             productCode: document.getElementById('sf-productCode').value.trim(),
-            productName: document.getElementById('sf-productName').value.trim(),
             quantity: parseFloat(document.getElementById('sf-quantity').value),
             unit: document.getElementById('sf-unit').value,
-            customer: document.getElementById('sf-customer').value.trim(),
             deliveryDate: document.getElementById('sf-deliveryDate').value,
             notes: document.getElementById('sf-notes').value.trim(),
         };
@@ -328,9 +322,8 @@
             <span class="order-card-date">${formatDate(o.createdDate)}</span>
           </div>
           <div class="order-card-body">
-            <h4>${esc(o.productCode)} - ${esc(o.productName)}</h4>
+            <h4>${esc(o.productCode)}</h4>
             <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity} ${esc(o.unit)}</strong></div>
-            <div class="order-card-detail">👤 Khách hàng: <strong>${esc(o.customer)}</strong></div>
             <div class="order-card-detail">📅 Giao hàng: <strong>${formatDateShort(o.deliveryDate)}</strong></div>
             ${o.notes ? `<div class="order-card-detail">📝 ${esc(o.notes)}</div>` : ''}
           </div>
@@ -353,7 +346,6 @@
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${esc(o.productName)}</td>
         <td>${o.quantity} ${esc(o.unit)}</td>
         <td>${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : '—'}</td>
         <td>${esc(o.mixerNotes || '—')}</td>
@@ -396,9 +388,8 @@
             <span class="order-card-date">${formatDate(o.createdDate)}</span>
           </div>
           <div class="order-card-body">
-            <h4>${esc(o.productCode)} - ${esc(o.productName)}</h4>
+            <h4>${esc(o.productCode)}</h4>
             <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity} ${esc(o.unit)}</strong></div>
-            <div class="order-card-detail">👤 Khách hàng: <strong>${esc(o.customer)}</strong></div>
             <div class="order-card-detail">📅 Giao hàng: <strong>${formatDateShort(o.deliveryDate)}</strong></div>
             <div class="order-card-detail">🔧 Mixer: <strong>${esc(o.mixerConfirmedBy || '—')}</strong> · ${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : ''}</div>
             ${o.mixerNotes ? `<div class="order-card-detail">📝 SX: ${esc(o.mixerNotes)}</div>` : ''}
@@ -426,7 +417,6 @@
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${esc(o.productName)}</td>
         <td>${o.quantity} ${esc(o.unit)}</td>
         <td><strong>${o.packingBags || 0} bao</strong></td>
         <td>${o.packingConfirmedDate ? formatDate(o.packingConfirmedDate) : '—'}</td>
