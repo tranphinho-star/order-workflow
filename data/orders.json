@@ -1,0 +1,45 @@
+{
+  "orders": [
+    {
+      "id": 2,
+      "createdDate": "2026-02-14T11:13:33.943516",
+      "createdBy": "sale",
+      "productCode": "511B",
+      "productName": "G",
+      "quantity": 24,
+      "unit": "tấn",
+      "customer": "DĐ",
+      "deliveryDate": "2026-01-14",
+      "notes": "",
+      "status": "Hoàn thành SX",
+      "mixerConfirmedBy": "mixer",
+      "mixerConfirmedDate": "2026-02-14T11:17:56.153638",
+      "mixerNotes": "",
+      "packingBags": null,
+      "packingConfirmedBy": null,
+      "packingConfirmedDate": null,
+      "packingNotes": ""
+    },
+    {
+      "id": 1,
+      "createdDate": "2026-02-14T11:10:33.543908",
+      "createdBy": "sale",
+      "productCode": "552",
+      "productName": "H",
+      "quantity": 42,
+      "unit": "tấn",
+      "customer": "DL",
+      "deliveryDate": "2026-02-14",
+      "notes": "",
+      "status": "Hoàn thành",
+      "mixerConfirmedBy": "mixer",
+      "mixerConfirmedDate": "2026-02-14T11:11:50.958822",
+      "mixerNotes": "",
+      "packingBags": 1000,
+      "packingConfirmedBy": "packing",
+      "packingConfirmedDate": "2026-02-14T11:12:44.238179",
+      "packingNotes": ""
+    }
+  ],
+  "nextId": 3
+}
