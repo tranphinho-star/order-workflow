@@ -1,6 +1,6 @@
 """
 Order Workflow Server - Python HTTP Server
-No external dependencies required!
+Supports PostgreSQL (Render) and JSON file fallback (local).
 """
 
 import http.server
@@ -12,6 +12,7 @@ import datetime
 import urllib.parse
 
 PORT = int(os.environ.get('PORT', 8080))
+DATABASE_URL = os.environ.get('DATABASE_URL')
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DATA_FILE = os.path.join(DATA_DIR, 'orders.json')
 PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public')
@@ -23,25 +24,231 @@ USERS = {
     'packing': {'password': '111', 'role': 'packing', 'displayName': 'Packing'},
 }
 
-# In-memory token store
 tokens = {}
 
-# ==================== DATA HELPERS ====================
-def ensure_data():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(DATA_FILE):
-        write_data({'orders': [], 'nextId': 1})
+# ==================== DATABASE LAYER ====================
+db = None
 
-def read_data():
-    with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+class JsonStore:
+    """JSON file-based storage for local development."""
+    def __init__(self):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        if not os.path.exists(DATA_FILE):
+            self._write({'orders': [], 'nextId': 1})
 
-def write_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    def _read(self):
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def _write(self, data):
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def get_orders(self):
+        return self._read()['orders']
+
+    def add_order(self, order_data, username):
+        data = self._read()
+        order = {
+            'id': data['nextId'],
+            'createdDate': now_iso(),
+            'createdBy': username,
+            **order_data,
+            'status': 'Chờ sản xuất',
+            'mixerConfirmedBy': None,
+            'mixerConfirmedDate': None,
+            'mixerNotes': '',
+            'packingBags': None,
+            'packingConfirmedBy': None,
+            'packingConfirmedDate': None,
+            'packingNotes': '',
+        }
+        data['nextId'] += 1
+        data['orders'].insert(0, order)
+        self._write(data)
+        return order
+
+    def update_mixer(self, order_id, status, mixer_notes, username):
+        data = self._read()
+        order = next((o for o in data['orders'] if o['id'] == order_id), None)
+        if not order:
+            return None
+        order['status'] = status
+        order['mixerConfirmedBy'] = username
+        order['mixerConfirmedDate'] = now_iso()
+        order['mixerNotes'] = mixer_notes
+        self._write(data)
+        return order
+
+    def update_packing(self, order_id, packing_bags, packing_notes, username):
+        data = self._read()
+        order = next((o for o in data['orders'] if o['id'] == order_id), None)
+        if not order:
+            return None
+        order['status'] = 'Hoàn thành'
+        order['packingBags'] = packing_bags
+        order['packingConfirmedBy'] = username
+        order['packingConfirmedDate'] = now_iso()
+        order['packingNotes'] = packing_notes
+        self._write(data)
+        return order
+
+    def delete_order(self, order_id):
+        data = self._read()
+        idx = next((i for i, o in enumerate(data['orders']) if o['id'] == order_id), -1)
+        if idx == -1:
+            return None
+        order = data['orders'][idx]
+        if order['status'] != 'Chờ sản xuất':
+            return False
+        data['orders'].pop(idx)
+        self._write(data)
+        return True
+
+
+class PgStore:
+    """PostgreSQL storage for production (Render)."""
+    def __init__(self, database_url):
+        import psycopg2
+        # Render uses postgres:// but psycopg2 needs postgresql://
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        self.database_url = database_url
+        self._init_db()
+
+    def _conn(self):
+        import psycopg2
+        return psycopg2.connect(self.database_url)
+
+    def _init_db(self):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS orders (
+                id SERIAL PRIMARY KEY,
+                created_date TIMESTAMP DEFAULT NOW(),
+                created_by VARCHAR(50),
+                product_code VARCHAR(100),
+                quantity REAL DEFAULT 0,
+                unit VARCHAR(20) DEFAULT 'tấn',
+                delivery_date VARCHAR(20),
+                notes TEXT DEFAULT '',
+                status VARCHAR(50) DEFAULT 'Chờ sản xuất',
+                mixer_confirmed_by VARCHAR(50),
+                mixer_confirmed_date TIMESTAMP,
+                mixer_notes TEXT DEFAULT '',
+                packing_bags INTEGER,
+                packing_confirmed_by VARCHAR(50),
+                packing_confirmed_date TIMESTAMP,
+                packing_notes TEXT DEFAULT ''
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("✅ PostgreSQL table 'orders' ready")
+
+    def _row_to_dict(self, row):
+        return {
+            'id': row[0],
+            'createdDate': row[1].isoformat() if row[1] else None,
+            'createdBy': row[2],
+            'productCode': row[3],
+            'quantity': row[4],
+            'unit': row[5],
+            'deliveryDate': row[6],
+            'notes': row[7],
+            'status': row[8],
+            'mixerConfirmedBy': row[9],
+            'mixerConfirmedDate': row[10].isoformat() if row[10] else None,
+            'mixerNotes': row[11],
+            'packingBags': row[12],
+            'packingConfirmedBy': row[13],
+            'packingConfirmedDate': row[14].isoformat() if row[14] else None,
+            'packingNotes': row[15],
+        }
+
+    def get_orders(self):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM orders ORDER BY id DESC')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [self._row_to_dict(r) for r in rows]
+
+    def add_order(self, order_data, username):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO orders (created_by, product_code, quantity, unit, delivery_date, notes)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+        ''', (
+            username,
+            order_data.get('productCode', ''),
+            order_data.get('quantity', 0),
+            order_data.get('unit', 'tấn'),
+            order_data.get('deliveryDate', ''),
+            order_data.get('notes', ''),
+        ))
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return self._row_to_dict(row)
+
+    def update_mixer(self, order_id, status, mixer_notes, username):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            UPDATE orders SET status=%s, mixer_confirmed_by=%s,
+            mixer_confirmed_date=NOW(), mixer_notes=%s
+            WHERE id=%s RETURNING *
+        ''', (status, username, mixer_notes, order_id))
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return self._row_to_dict(row) if row else None
+
+    def update_packing(self, order_id, packing_bags, packing_notes, username):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            UPDATE orders SET status='Hoàn thành', packing_bags=%s,
+            packing_confirmed_by=%s, packing_confirmed_date=NOW(),
+            packing_notes=%s WHERE id=%s RETURNING *
+        ''', (packing_bags, username, packing_notes, order_id))
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return self._row_to_dict(row) if row else None
+
+    def delete_order(self, order_id):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT status FROM orders WHERE id=%s', (order_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            conn.close()
+            return None
+        if row[0] != 'Chờ sản xuất':
+            cur.close()
+            conn.close()
+            return False
+        cur.execute('DELETE FROM orders WHERE id=%s', (order_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+
+
+def now_iso():
+    return datetime.datetime.now().isoformat()
 
 def get_local_ip():
-    """Get the local IP address for network access."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -57,7 +264,6 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=PUBLIC_DIR, **kwargs)
 
     def log_message(self, format, *args):
-        """Suppress default logging, use custom."""
         pass
 
     def send_json(self, data, status=200):
@@ -75,7 +281,6 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
         return json.loads(body.decode('utf-8'))
 
     def get_user(self):
-        """Extract user from auth token."""
         auth = self.headers.get('Authorization', '')
         token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else ''
         return tokens.get(token)
@@ -100,28 +305,24 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             user = self.get_user()
             if not user:
                 return self.send_json({'error': 'Unauthorized'}, 401)
-            data = read_data()
-            return self.send_json(data['orders'])
+            orders = db.get_orders()
+            return self.send_json(orders)
 
         elif path == '/api/stats':
             user = self.get_user()
             if not user:
                 return self.send_json({'error': 'Unauthorized'}, 401)
-            data = read_data()
-            orders = data['orders']
+            orders = db.get_orders()
             stats = {
                 'total': len(orders),
                 'waiting': sum(1 for o in orders if o['status'] == 'Chờ sản xuất'),
-                'producing': sum(1 for o in orders if o['status'] == 'Đang sản xuất'),
-                'produced': sum(1 for o in orders if o['status'] == 'Hoàn thành SX'),
-                'packing': sum(1 for o in orders if o['status'] == 'Đang đóng gói'),
+                'produced': sum(1 for o in orders if o['status'] in ('Hoàn thành SX', 'Đang sản xuất')),
                 'completed': sum(1 for o in orders if o['status'] == 'Hoàn thành'),
                 'totalBags': sum(o.get('packingBags', 0) or 0 for o in orders),
             }
             return self.send_json(stats)
 
         else:
-            # Serve static files from public/
             return super().do_GET()
 
     def do_POST(self):
@@ -151,33 +352,8 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
                 return self.send_json({'error': 'Unauthorized'}, 401)
             if user['role'] != 'sales':
                 return self.send_json({'error': 'Chỉ Sales mới được tạo đơn hàng'}, 403)
-
             body = self.read_body()
-            data = read_data()
-            now = datetime.datetime.now().isoformat()
-            order = {
-                'id': data['nextId'],
-                'createdDate': now,
-                'createdBy': user['username'],
-                'productCode': body.get('productCode', ''),
-                'productName': body.get('productName', ''),
-                'quantity': body.get('quantity', 0),
-                'unit': body.get('unit', 'tấn'),
-                'customer': body.get('customer', ''),
-                'deliveryDate': body.get('deliveryDate', ''),
-                'notes': body.get('notes', ''),
-                'status': 'Chờ sản xuất',
-                'mixerConfirmedBy': None,
-                'mixerConfirmedDate': None,
-                'mixerNotes': '',
-                'packingBags': None,
-                'packingConfirmedBy': None,
-                'packingConfirmedDate': None,
-                'packingNotes': '',
-            }
-            data['nextId'] += 1
-            data['orders'].insert(0, order)
-            write_data(data)
+            order = db.add_order(body, user['username'])
             return self.send_json(order)
 
         else:
@@ -189,39 +365,24 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
         if not user:
             return self.send_json({'error': 'Unauthorized'}, 401)
 
-        # /api/orders/{id}/mixer
         if '/api/orders/' in path and path.endswith('/mixer'):
             if user['role'] != 'mixer':
                 return self.send_json({'error': 'Chỉ Mixer mới được xác nhận sản xuất'}, 403)
             order_id = int(path.split('/')[3])
             body = self.read_body()
-            data = read_data()
-            order = next((o for o in data['orders'] if o['id'] == order_id), None)
+            order = db.update_mixer(order_id, body.get('status', 'Hoàn thành SX'), body.get('mixerNotes', ''), user['username'])
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
-            order['status'] = body.get('status', 'Hoàn thành SX')
-            order['mixerConfirmedBy'] = user['username']
-            order['mixerConfirmedDate'] = datetime.datetime.now().isoformat()
-            order['mixerNotes'] = body.get('mixerNotes', '')
-            write_data(data)
             return self.send_json(order)
 
-        # /api/orders/{id}/packing
         elif '/api/orders/' in path and path.endswith('/packing'):
             if user['role'] != 'packing':
                 return self.send_json({'error': 'Chỉ Packing mới được xác nhận đóng gói'}, 403)
             order_id = int(path.split('/')[3])
             body = self.read_body()
-            data = read_data()
-            order = next((o for o in data['orders'] if o['id'] == order_id), None)
+            order = db.update_packing(order_id, body.get('packingBags', 0), body.get('packingNotes', ''), user['username'])
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
-            order['status'] = 'Hoàn thành'
-            order['packingBags'] = body.get('packingBags', 0)
-            order['packingConfirmedBy'] = user['username']
-            order['packingConfirmedDate'] = datetime.datetime.now().isoformat()
-            order['packingNotes'] = body.get('packingNotes', '')
-            write_data(data)
             return self.send_json(order)
 
         else:
@@ -233,19 +394,15 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
         if not user:
             return self.send_json({'error': 'Unauthorized'}, 401)
 
-        # /api/orders/{id}
         if path.startswith('/api/orders/'):
             if user['role'] != 'sales':
                 return self.send_json({'error': 'Chỉ Sales mới được xóa đơn hàng'}, 403)
             order_id = int(path.split('/')[3])
-            data = read_data()
-            idx = next((i for i, o in enumerate(data['orders']) if o['id'] == order_id), -1)
-            if idx == -1:
+            result = db.delete_order(order_id)
+            if result is None:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
-            if data['orders'][idx]['status'] != 'Chờ sản xuất':
+            if result is False:
                 return self.send_json({'error': 'Chỉ xóa được đơn đang Chờ sản xuất'}, 403)
-            data['orders'].pop(idx)
-            write_data(data)
             return self.send_json({'success': True})
 
         else:
@@ -254,14 +411,20 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
 
 # ==================== MAIN ====================
 if __name__ == '__main__':
-    ensure_data()
-    local_ip = get_local_ip()
+    # Choose storage backend
+    if DATABASE_URL:
+        print("🗄️  Sử dụng PostgreSQL database")
+        db = PgStore(DATABASE_URL)
+    else:
+        print("📁 Sử dụng JSON file (local mode)")
+        db = JsonStore()
 
+    local_ip = get_local_ip()
     server = http.server.HTTPServer(('0.0.0.0', PORT), OrderHandler)
     print(f"\n🚀 Order Workflow Server đang chạy!")
     print(f"   Local:   http://localhost:{PORT}")
-    print(f"   Network: http://{local_ip}:{PORT}")
-    print(f"\n📁 Dữ liệu: {DATA_FILE}")
+    if not DATABASE_URL:
+        print(f"   Network: http://{local_ip}:{PORT}")
     print(f"\n👤 Users: sale/111, mixer/111, packing/111")
     print(f"\n   Nhấn Ctrl+C để dừng server\n")
 
