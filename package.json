@@ -4,7 +4,7 @@
   "description": "Order Request Workflow - Sales → Mixer → Packing",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "python server.py",
     "dev": "node server.js"
   },
   "dependencies": {
