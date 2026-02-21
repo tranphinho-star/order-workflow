@@ -15,16 +15,46 @@ PORT = int(os.environ.get('PORT', 8080))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DATA_FILE = os.path.join(DATA_DIR, 'orders.json')
+USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public')
 
 # ==================== USERS CONFIG ====================
-USERS = {
+DEFAULT_USERS = {
     'sale':    {'password': '111', 'role': 'sales',   'displayName': 'Phòng Bán Hàng'},
     'mixer':   {'password': '111', 'role': 'mixer',   'displayName': 'Mixer'},
     'packing': {'password': '111', 'role': 'packing', 'displayName': 'Packing'},
 }
 
 tokens = {}
+
+def _load_users():
+    """Load user passwords from users.json, fallback to defaults."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+            # Merge saved passwords into defaults
+            users = {}
+            for uname, udata in DEFAULT_USERS.items():
+                users[uname] = dict(udata)
+                if uname in saved:
+                    users[uname]['password'] = saved[uname].get('password', udata['password'])
+            return users
+        except Exception:
+            pass
+    return {k: dict(v) for k, v in DEFAULT_USERS.items()}
+
+def _save_users(users):
+    """Save user passwords to users.json."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    save_data = {}
+    for uname, udata in users.items():
+        save_data[uname] = {'password': udata['password']}
+    with open(USERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(save_data, f, ensure_ascii=False, indent=2)
+
+USERS = _load_users()
 
 # ==================== DATABASE LAYER ====================
 db = None
@@ -57,13 +87,8 @@ class JsonStore:
             'pickupDate': order_data.get('pickupDate', ''),
             'productName': order_data.get('productName', ''),
             'pelletType': order_data.get('pelletType', ''),
-            'bagHigro': order_data.get('bagHigro', 0) or 0,
-            'bagCp': order_data.get('bagCp', 0) or 0,
-            'bagStar': order_data.get('bagStar', 0) or 0,
-            'bagNuvo': order_data.get('bagNuvo', 0) or 0,
-            'bagNasa': order_data.get('bagNasa', 0) or 0,
-            'bagFarm': order_data.get('bagFarm', 0) or 0,
-            'siloTruck': order_data.get('siloTruck', ''),
+            'deliveryType': order_data.get('deliveryType', 'Đại lý'),
+            'quantity': order_data.get('quantity', 0) or 0,
             'notes': order_data.get('notes', ''),
             'status': 'Chờ sản xuất',
             'mixerConfirmedBy': None,
@@ -103,7 +128,7 @@ class JsonStore:
         self._write(data)
         return order
 
-    def delete_order(self, order_id):
+    def delete_order(self, order_id, deleted_by=''):
         data = self._read()
         idx = next((i for i, o in enumerate(data['orders']) if o['id'] == order_id), -1)
         if idx == -1:
@@ -111,9 +136,20 @@ class JsonStore:
         order = data['orders'][idx]
         if order['status'] != 'Chờ sản xuất':
             return False
+        # Archive to deleted_orders
+        deleted_record = dict(order)
+        deleted_record['deletedBy'] = deleted_by
+        deleted_record['deletedDate'] = now_iso()
+        if 'deleted_orders' not in data:
+            data['deleted_orders'] = []
+        data['deleted_orders'].insert(0, deleted_record)
         data['orders'].pop(idx)
         self._write(data)
         return True
+
+    def get_deleted_orders(self):
+        data = self._read()
+        return data.get('deleted_orders', [])
 
 
 class PgStore:
@@ -175,6 +211,7 @@ class PgStore:
             ("bag_nasa", "INTEGER DEFAULT 0"),
             ("bag_farm", "INTEGER DEFAULT 0"),
             ("silo_truck", "VARCHAR(200) DEFAULT ''"),
+            ("delivery_type", "VARCHAR(50) DEFAULT 'Đại lý'"),
         ]
         for col_name, col_type in new_columns:
             try:
@@ -185,6 +222,44 @@ class PgStore:
         cur.close()
         conn.close()
         print("[DB] PostgreSQL table 'orders' ready")
+
+        # deleted_orders table
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_orders (
+                id INTEGER,
+                created_date TIMESTAMP,
+                created_by VARCHAR(50),
+                order_date VARCHAR(20) DEFAULT '',
+                pickup_date VARCHAR(20) DEFAULT '',
+                product_name VARCHAR(200) DEFAULT '',
+                pellet_type VARCHAR(100) DEFAULT '',
+                delivery_type VARCHAR(50) DEFAULT '',
+                quantity REAL DEFAULT 0,
+                notes TEXT DEFAULT '',
+                deleted_by VARCHAR(50),
+                deleted_date TIMESTAMP DEFAULT NOW()
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("[DB] PostgreSQL table 'deleted_orders' ready")
+
+        # user_passwords table
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS user_passwords (
+                username VARCHAR(50) PRIMARY KEY,
+                password VARCHAR(100)
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("[DB] PostgreSQL table 'user_passwords' ready")
 
     def _row_to_dict(self, row):
         d = {
@@ -218,6 +293,8 @@ class PgStore:
             d['bagNasa'] = row[24] or 0
             d['bagFarm'] = row[25] or 0
             d['siloTruck'] = row[26] or ''
+        if len(row) > 27:
+            d['deliveryType'] = row[27] or 'Đại lý'
         return d
 
     def get_orders(self):
@@ -236,28 +313,25 @@ class PgStore:
             INSERT INTO orders (
                 created_by, product_code, quantity, unit, delivery_date, notes,
                 order_date, pickup_date, product_name, pellet_type,
-                bag_higro, bag_cp, bag_star, bag_nuvo, bag_nasa, bag_farm, silo_truck
+                bag_higro, bag_cp, bag_star, bag_nuvo, bag_nasa, bag_farm, silo_truck,
+                delivery_type
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         ''', (
             username,
             order_data.get('productName', ''),
-            0,
-            'bao',
+            order_data.get('quantity', 0),
+            'Kg' if order_data.get('deliveryType') == 'Xe silo' else 'Bao',
             order_data.get('pickupDate', ''),
             order_data.get('notes', ''),
             order_data.get('orderDate', ''),
             order_data.get('pickupDate', ''),
             order_data.get('productName', ''),
             order_data.get('pelletType', ''),
-            order_data.get('bagHigro', 0) or 0,
-            order_data.get('bagCp', 0) or 0,
-            order_data.get('bagStar', 0) or 0,
-            order_data.get('bagNuvo', 0) or 0,
-            order_data.get('bagNasa', 0) or 0,
-            order_data.get('bagFarm', 0) or 0,
-            order_data.get('siloTruck', ''),
+            0, 0, 0, 0, 0, 0,  # legacy bag columns
+            '',  # legacy silo_truck
+            order_data.get('deliveryType', 'Đại lý'),
         ))
         row = cur.fetchone()
         conn.commit()
@@ -293,24 +367,87 @@ class PgStore:
         conn.close()
         return self._row_to_dict(row) if row else None
 
-    def delete_order(self, order_id):
+    def delete_order(self, order_id, deleted_by=''):
         conn = self._conn()
         cur = conn.cursor()
-        cur.execute('SELECT status FROM orders WHERE id=%s', (order_id,))
+        cur.execute('SELECT * FROM orders WHERE id=%s', (order_id,))
         row = cur.fetchone()
         if not row:
             cur.close()
             conn.close()
             return None
-        if row[0] != 'Chờ sản xuất':
+        order = self._row_to_dict(row)
+        if order['status'] != 'Chờ sản xuất':
             cur.close()
             conn.close()
             return False
+        # Archive to deleted_orders
+        cur.execute('''
+            INSERT INTO deleted_orders (id, created_date, created_by, order_date, pickup_date,
+                product_name, pellet_type, delivery_type, quantity, notes, deleted_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            order['id'], order.get('createdDate'), order.get('createdBy'),
+            order.get('orderDate', ''), order.get('pickupDate', ''),
+            order.get('productName', ''), order.get('pelletType', ''),
+            order.get('deliveryType', ''), order.get('quantity', 0),
+            order.get('notes', ''), deleted_by
+        ))
         cur.execute('DELETE FROM orders WHERE id=%s', (order_id,))
         conn.commit()
         cur.close()
         conn.close()
         return True
+
+    def get_deleted_orders(self):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT id, created_date, created_by, order_date, pickup_date, product_name, pellet_type, delivery_type, quantity, notes, deleted_by, deleted_date FROM deleted_orders ORDER BY deleted_date DESC')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        result = []
+        for r in rows:
+            result.append({
+                'id': r[0],
+                'createdDate': r[1].isoformat() if r[1] else None,
+                'createdBy': r[2],
+                'orderDate': r[3] or '',
+                'pickupDate': r[4] or '',
+                'productName': r[5] or '',
+                'pelletType': r[6] or '',
+                'deliveryType': r[7] or '',
+                'quantity': r[8] or 0,
+                'notes': r[9] or '',
+                'deletedBy': r[10] or '',
+                'deletedDate': r[11].isoformat() if r[11] else None,
+            })
+        return result
+
+    def load_user_passwords(self):
+        """Load saved passwords from PostgreSQL."""
+        try:
+            conn = self._conn()
+            cur = conn.cursor()
+            cur.execute('SELECT username, password FROM user_passwords')
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            return {r[0]: r[1] for r in rows}
+        except Exception:
+            return {}
+
+    def save_user_password(self, username, password):
+        """Save a user password to PostgreSQL."""
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO user_passwords (username, password) VALUES (%s, %s)
+            ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password
+        ''', (username, password))
+        conn.commit()
+        cur.close()
+        conn.close()
 
 
 def now_iso():
@@ -390,6 +527,28 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             }
             return self.send_json(stats)
 
+        elif path == '/api/orders/public':
+            # Public read-only endpoint for guest viewers
+            orders = db.get_orders()
+            return self.send_json(orders)
+
+        elif path == '/api/users/public':
+            # Public endpoint for admin to view passwords
+            users_info = []
+            for uname, udata in USERS.items():
+                users_info.append({
+                    'username': uname,
+                    'role': udata['role'],
+                    'displayName': udata['displayName'],
+                    'password': udata['password'],
+                })
+            return self.send_json(users_info)
+
+        elif path == '/api/orders/deleted':
+            # Public endpoint for viewing deletion history
+            deleted = db.get_deleted_orders()
+            return self.send_json(deleted)
+
         else:
             return super().do_GET()
 
@@ -414,6 +573,25 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             tokens.pop(token, None)
             return self.send_json({'success': True})
 
+        elif path == '/api/change-password':
+            user = self.get_user()
+            if not user:
+                return self.send_json({'error': 'Unauthorized'}, 401)
+            body = self.read_body()
+            new_password = body.get('newPassword', '').strip()
+            if not new_password or len(new_password) < 1:
+                return self.send_json({'error': 'Mật khẩu mới không được để trống'}, 400)
+            username = user['username']
+            if username in USERS:
+                USERS[username]['password'] = new_password
+                # Save to appropriate backend
+                if hasattr(db, 'save_user_password'):
+                    db.save_user_password(username, new_password)
+                else:
+                    _save_users(USERS)
+                return self.send_json({'success': True, 'message': f'Đã đổi mật khẩu cho {username}'})
+            return self.send_json({'error': 'User not found'}, 404)
+
         elif path == '/api/orders':
             user = self.get_user()
             if not user:
@@ -423,6 +601,33 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             body = self.read_body()
             order = db.add_order(body, user['username'])
             return self.send_json(order)
+
+        elif path == '/api/orders/batch':
+            user = self.get_user()
+            if not user:
+                return self.send_json({'error': 'Unauthorized'}, 401)
+            if user['role'] != 'sales':
+                return self.send_json({'error': 'Chỉ Sales mới được tạo đơn hàng'}, 403)
+            body = self.read_body()
+            items = body.get('items', [])
+            if not items:
+                return self.send_json({'error': 'Không có sản phẩm nào'}, 400)
+
+            created_orders = []
+            for item in items:
+                order_data = {
+                    'orderDate': body.get('orderDate', ''),
+                    'pickupDate': body.get('pickupDate', ''),
+                    'productName': item.get('productName', ''),
+                    'pelletType': item.get('pelletType', ''),
+                    'deliveryType': item.get('deliveryType', 'Đại lý'),
+                    'quantity': item.get('quantity', 0),
+                    'notes': body.get('notes', ''),
+                }
+                order = db.add_order(order_data, user['username'])
+                created_orders.append(order)
+
+            return self.send_json({'created': len(created_orders), 'orders': created_orders})
 
         else:
             self.send_json({'error': 'Not found'}, 404)
@@ -466,7 +671,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             if user['role'] != 'sales':
                 return self.send_json({'error': 'Chỉ Sales mới được xóa đơn hàng'}, 403)
             order_id = int(path.split('/')[3])
-            result = db.delete_order(order_id)
+            result = db.delete_order(order_id, user['username'])
             if result is None:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
             if result is False:
@@ -483,6 +688,11 @@ if __name__ == '__main__':
     if DATABASE_URL:
         print("🗄️  Sử dụng PostgreSQL database")
         db = PgStore(DATABASE_URL)
+        # Load saved passwords from PostgreSQL
+        saved_pws = db.load_user_passwords()
+        for uname, pw in saved_pws.items():
+            if uname in USERS:
+                USERS[uname]['password'] = pw
     else:
         print("📁 Sử dụng JSON file (local mode)")
         db = JsonStore()

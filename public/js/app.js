@@ -3,16 +3,19 @@
     'use strict';
 
     const API_BASE = window.location.origin + '/api';
+    const ORDER_LINE_COUNT = 10;
     let currentUser = null;
     let authToken = null;
     let allOrders = [];
     let currentView = 'dashboard';
+    let salesDateFilter = '';
+    let isGuestMode = false;
+    let dashboardDateFilter = ''; // '' = all, 'YYYY-MM-DD' = specific date
 
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', init);
 
     function init() {
-        // Check for saved session
         const saved = sessionStorage.getItem('orderWorkflow');
         if (saved) {
             try {
@@ -28,33 +31,148 @@
         }
 
         setupEventListeners();
+        buildOrderLinesTable();
     }
 
     // ==================== EVENT LISTENERS ====================
     function setupEventListeners() {
-        // Login form
         document.getElementById('login-form').addEventListener('submit', handleLogin);
-
-        // Logout
         document.getElementById('btn-logout').addEventListener('click', handleLogout);
+        document.getElementById('btn-guest-view').addEventListener('click', handleGuestView);
 
-        // Navigation
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.addEventListener('click', () => switchView(btn.dataset.view));
         });
 
-        // Sales form
         document.getElementById('sales-form').addEventListener('submit', handleCreateOrder);
-
-        // Refresh
         document.getElementById('btn-refresh').addEventListener('click', loadData);
-
-        // Filter
         document.getElementById('filter-status').addEventListener('change', renderDashboardTable);
+
+        // Sales date filter
+        document.getElementById('sales-date-filter').addEventListener('change', function () {
+            salesDateFilter = this.value;
+            renderSalesView();
+        });
+        document.getElementById('btn-sales-today').addEventListener('click', function () {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('sales-date-filter').value = today;
+            salesDateFilter = today;
+            renderSalesView();
+        });
+        document.getElementById('btn-sales-all').addEventListener('click', function () {
+            document.getElementById('sales-date-filter').value = '';
+            salesDateFilter = '';
+            renderSalesView();
+        });
+
+        // Dashboard date filter
+        document.getElementById('dashboard-date-filter')?.addEventListener('change', function () {
+            dashboardDateFilter = this.value;
+            renderDashboardTable();
+        });
+        document.getElementById('btn-dashboard-today')?.addEventListener('click', function () {
+            const today = new Date().toISOString().split('T')[0];
+            const el = document.getElementById('dashboard-date-filter');
+            if (el) { el.value = today; }
+            dashboardDateFilter = today;
+            renderDashboardTable();
+        });
+        document.getElementById('btn-dashboard-all')?.addEventListener('click', function () {
+            const el = document.getElementById('dashboard-date-filter');
+            if (el) { el.value = ''; }
+            dashboardDateFilter = '';
+            renderDashboardTable();
+        });
+
+        // Password change
+        document.getElementById('btn-change-pw').addEventListener('click', openPasswordModal);
+        document.getElementById('pw-modal-close').addEventListener('click', closePasswordModal);
+        document.getElementById('pw-modal-cancel').addEventListener('click', closePasswordModal);
+        document.getElementById('pw-modal-save').addEventListener('click', handleChangePassword);
+        document.getElementById('btn-refresh-users')?.addEventListener('click', loadAdminUsers);
+
+        // Admin password gate
+        document.getElementById('btn-admin-pw-submit')?.addEventListener('click', handleAdminPwSubmit);
+        document.getElementById('admin-pw-input')?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') handleAdminPwSubmit();
+        });
+
+        // Deletion history
+        document.getElementById('btn-toggle-deleted')?.addEventListener('click', toggleDeletedOrders);
 
         // Modal
         document.getElementById('modal-close').addEventListener('click', closeModal);
         document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    }
+
+    // ==================== ORDER LINES TABLE ====================
+    function buildOrderLinesTable() {
+        const tbody = document.getElementById('order-lines-tbody');
+        let html = '';
+        for (let i = 1; i <= ORDER_LINE_COUNT; i++) {
+            html += `
+            <tr class="order-line-row" data-row="${i}">
+              <td class="col-stt"><span class="row-number">${i}</span></td>
+              <td class="col-product">
+                <input type="text" id="line-product-${i}" placeholder="VD: 511B" class="line-input">
+              </td>
+              <td class="col-pellet">
+                <input type="text" id="line-pellet-${i}" placeholder="VD: Viên 3mm" class="line-input">
+              </td>
+              <td class="col-delivery">
+                <select id="line-delivery-${i}" class="line-select">
+                  <option value="Đại lý">🏪 Đại lý</option>
+                  <option value="Trại">🏠 Trại</option>
+                  <option value="Xe silo">🚛 Xe silo</option>
+                </select>
+              </td>
+              <td class="col-qty">
+                <div class="qty-wrapper">
+                  <input type="number" id="line-qty-${i}" min="1" placeholder="0" class="line-input line-qty-input">
+                  <span class="qty-unit" id="line-unit-${i}">Bao</span>
+                </div>
+              </td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+
+        // Add delivery type change listeners to update unit label
+        for (let i = 1; i <= ORDER_LINE_COUNT; i++) {
+            document.getElementById(`line-delivery-${i}`).addEventListener('change', function () {
+                const unitEl = document.getElementById(`line-unit-${i}`);
+                unitEl.textContent = this.value === 'Xe silo' ? 'Kg' : 'Bao';
+            });
+        }
+    }
+
+    function getFilledLines() {
+        const lines = [];
+        for (let i = 1; i <= ORDER_LINE_COUNT; i++) {
+            const product = document.getElementById(`line-product-${i}`).value.trim();
+            const pellet = document.getElementById(`line-pellet-${i}`).value.trim();
+            const delivery = document.getElementById(`line-delivery-${i}`).value;
+            const qty = parseInt(document.getElementById(`line-qty-${i}`).value) || 0;
+
+            if (product && qty > 0) {
+                lines.push({
+                    productName: product,
+                    pelletType: pellet,
+                    deliveryType: delivery,
+                    quantity: qty,
+                });
+            }
+        }
+        return lines;
+    }
+
+    function clearOrderLines() {
+        for (let i = 1; i <= ORDER_LINE_COUNT; i++) {
+            document.getElementById(`line-product-${i}`).value = '';
+            document.getElementById(`line-pellet-${i}`).value = '';
+            document.getElementById(`line-delivery-${i}`).value = 'Đại lý';
+            document.getElementById(`line-qty-${i}`).value = '';
+            document.getElementById(`line-unit-${i}`).textContent = 'Bao';
+        }
     }
 
     // ==================== AUTH ====================
@@ -90,14 +208,24 @@
     }
 
     function handleLogout() {
-        fetch(`${API_BASE}/logout`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${authToken}` },
-        }).catch(() => { });
+        if (!isGuestMode) {
+            fetch(`${API_BASE}/logout`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}` },
+            }).catch(() => { });
+        }
         authToken = null;
         currentUser = null;
+        isGuestMode = false;
         sessionStorage.removeItem('orderWorkflow');
         showLogin();
+    }
+
+    function handleGuestView() {
+        isGuestMode = true;
+        currentUser = { username: 'guest', role: 'viewer', displayName: 'Quản lý (Chỉ xem)' };
+        authToken = null;
+        showApp();
     }
 
     // ==================== VIEWS ====================
@@ -113,32 +241,58 @@
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('app').style.display = 'grid';
 
-        // Set user info
         document.getElementById('user-name').textContent = currentUser.displayName;
-        document.getElementById('header-role').textContent = currentUser.role.toUpperCase();
-        document.getElementById('user-avatar').textContent = currentUser.username.charAt(0).toUpperCase();
+        document.getElementById('header-role').textContent = isGuestMode ? 'CHỈ XEM' : currentUser.role.toUpperCase();
+        document.getElementById('user-avatar').textContent = isGuestMode ? '👁' : currentUser.username.charAt(0).toUpperCase();
 
-        // Set default view based on role
-        const roleViewMap = {
-            sales: 'sales',
-            mixer: 'mixer',
-            packing: 'packing',
-        };
-        switchView(roleViewMap[currentUser.role] || 'dashboard');
+        // Hide/show nav tabs based on guest mode
+        const navSales = document.getElementById('nav-sales');
+        const navMixer = document.getElementById('nav-mixer');
+        const navPacking = document.getElementById('nav-packing');
+        if (isGuestMode) {
+            if (navSales) navSales.style.display = 'none';
+            if (navMixer) navMixer.style.display = 'none';
+            if (navPacking) navPacking.style.display = 'none';
+            document.getElementById('btn-change-pw').style.display = 'none';
+            document.getElementById('admin-users-section').style.display = 'block';
+            // Reset password gate
+            document.getElementById('admin-pw-gate').style.display = 'block';
+            document.getElementById('admin-users-list').style.display = 'none';
+            document.getElementById('btn-refresh-users').style.display = 'none';
+            document.getElementById('admin-pw-input').value = '';
+            document.getElementById('admin-pw-error').style.display = 'none';
+            switchView('dashboard');
+        } else {
+            if (navSales) navSales.style.display = '';
+            if (navMixer) navMixer.style.display = '';
+            if (navPacking) navPacking.style.display = '';
+            document.getElementById('btn-change-pw').style.display = '';
+            document.getElementById('admin-users-section').style.display = 'none';
+
+            const roleViewMap = {
+                sales: 'sales',
+                mixer: 'mixer',
+                packing: 'packing',
+            };
+            switchView(roleViewMap[currentUser.role] || 'dashboard');
+
+            // Set default: today's date filter for sales view
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('sales-date-filter').value = today;
+            salesDateFilter = today;
+        }
+
         loadData();
     }
 
     function switchView(view) {
         currentView = view;
-        // Update nav buttons
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.view === view);
         });
-        // Update views
         document.querySelectorAll('.view').forEach(v => {
             v.classList.toggle('active', v.id === `view-${view}`);
         });
-        // Render the active view
         renderCurrentView();
     }
 
@@ -154,17 +308,137 @@
     // ==================== DATA ====================
     async function loadData() {
         try {
-            const res = await fetch(`${API_BASE}/orders`, {
-                headers: { 'Authorization': `Bearer ${authToken}` },
-            });
-            if (res.status === 401) {
-                handleLogout();
-                return;
+            let res;
+            if (isGuestMode) {
+                res = await fetch(`${API_BASE}/orders/public`);
+            } else {
+                res = await fetch(`${API_BASE}/orders`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                });
+                if (res.status === 401) {
+                    handleLogout();
+                    return;
+                }
             }
             allOrders = await res.json();
             renderCurrentView();
         } catch (err) {
             showToast('Không thể tải dữ liệu', 'error');
+        }
+    }
+
+    // ==================== PASSWORD MANAGEMENT ====================
+    function openPasswordModal() {
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-modal').style.display = 'flex';
+        document.getElementById('pw-new').focus();
+    }
+
+    function closePasswordModal() {
+        document.getElementById('pw-modal').style.display = 'none';
+    }
+
+    async function handleChangePassword() {
+        const newPw = document.getElementById('pw-new').value.trim();
+        if (!newPw) {
+            showToast('Vui lòng nhập mật khẩu mới!', 'error');
+            return;
+        }
+        try {
+            await apiCall('/change-password', 'POST', { newPassword: newPw });
+            showToast('Đổi mật khẩu thành công! ✅', 'success');
+            closePasswordModal();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+
+    // ==================== DELETION HISTORY ====================
+    let deletedOrdersLoaded = false;
+
+    function toggleDeletedOrders() {
+        const content = document.getElementById('deleted-orders-content');
+        const btn = document.getElementById('btn-toggle-deleted');
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            btn.textContent = 'Ẩn';
+            if (!deletedOrdersLoaded) {
+                loadDeletedOrders();
+            }
+        } else {
+            content.style.display = 'none';
+            btn.textContent = 'Hiện';
+        }
+    }
+
+    async function loadDeletedOrders() {
+        try {
+            let res;
+            if (isGuestMode) {
+                res = await fetch(`${API_BASE}/orders/deleted`);
+            } else {
+                res = await fetch(`${API_BASE}/orders/deleted`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                });
+            }
+            const deleted = await res.json();
+            const tbody = document.getElementById('deleted-orders-tbody');
+            const emptyEl = document.getElementById('deleted-empty');
+            if (!deleted.length) {
+                tbody.innerHTML = '';
+                emptyEl.style.display = 'block';
+                return;
+            }
+            emptyEl.style.display = 'none';
+            tbody.innerHTML = deleted.map(o => `
+                <tr style="opacity:0.8;">
+                    <td><strong>#${o.id}</strong></td>
+                    <td>${formatDate(o.deletedDate)}</td>
+                    <td><span style="color:#f87171;font-weight:600;">${esc(o.deletedBy || '?')}</span></td>
+                    <td>${esc(o.productName || '')}</td>
+                    <td>${deliveryTypeBadge(o.deliveryType)}</td>
+                    <td><strong>${o.quantity || 0}</strong> ${unitLabel(o.deliveryType)}</td>
+                    <td>${formatDateShort(o.orderDate)}</td>
+                </tr>
+            `).join('');
+            deletedOrdersLoaded = true;
+        } catch (err) {
+            showToast('Không thể tải lịch sử xóa', 'error');
+        }
+    }
+
+    function handleAdminPwSubmit() {
+        const pw = document.getElementById('admin-pw-input').value.trim();
+        const ADMIN_PW = '2810';
+        if (pw === ADMIN_PW) {
+            document.getElementById('admin-pw-gate').style.display = 'none';
+            document.getElementById('admin-users-list').style.display = 'block';
+            document.getElementById('btn-refresh-users').style.display = '';
+            document.getElementById('admin-pw-error').style.display = 'none';
+            loadAdminUsers();
+        } else {
+            document.getElementById('admin-pw-error').style.display = 'block';
+            document.getElementById('admin-pw-input').value = '';
+            document.getElementById('admin-pw-input').focus();
+        }
+    }
+
+    async function loadAdminUsers() {
+        try {
+            const res = await fetch(`${API_BASE}/users/public`);
+            const users = await res.json();
+            const tbody = document.getElementById('admin-users-tbody');
+            const roleLabels = { sales: '🛒 Sales', mixer: '⚙️ Mixer', packing: '📦 Packing' };
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td><strong>${esc(u.username)}</strong></td>
+                    <td>${roleLabels[u.role] || u.role}</td>
+                    <td>${esc(u.displayName)}</td>
+                    <td><code style="background:rgba(124,58,237,0.2);padding:4px 12px;border-radius:6px;font-size:1rem;font-weight:700;color:#c4b5fd;">${esc(u.password)}</code></td>
+                </tr>
+            `).join('');
+        } catch (err) {
+            showToast('Không thể tải danh sách tài khoản', 'error');
         }
     }
 
@@ -228,8 +502,8 @@
         <td>${formatDateShort(o.orderDate || o.createdDate)}</td>
         <td>${formatDateShort(o.pickupDate || o.deliveryDate)}</td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
-        <td>${totalBags(o)} bao</td>
-        <td>${esc(o.siloTruck || '—')}</td>
+        <td>${deliveryTypeBadge(o.deliveryType)}</td>
+        <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${statusBadge(o.status)}</td>
       </tr>
     `).join('');
@@ -237,7 +511,21 @@
 
     // ==================== SALES VIEW ====================
     function renderSalesView() {
-        const orders = allOrders.filter(o => o.createdBy === currentUser.username);
+        let orders = allOrders.filter(o => o.createdBy === currentUser.username);
+
+        // Apply date filter
+        if (salesDateFilter) {
+            orders = orders.filter(o => {
+                const orderDateStr = o.orderDate || o.createdDate || '';
+                if (!orderDateStr) return false;
+                const d = new Date(orderDateStr);
+                const dateOnly = d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+                return dateOnly === salesDateFilter;
+            });
+        }
+
         const tbody = document.getElementById('sales-tbody');
         const empty = document.getElementById('sales-empty');
 
@@ -250,11 +538,12 @@
         empty.style.display = 'none';
         tbody.innerHTML = orders.map(o => `
       <tr>
-        <td><strong>#${o.id}</strong></td>
-        <td>${formatDateShort(o.orderDate || o.createdDate)}</td>
+        <td>${formatTimeOnly(o.createdDate)}</td>
         <td>${formatDateShort(o.pickupDate || o.deliveryDate)}</td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
-        <td>${totalBags(o)} bao</td>
+        <td>${esc(o.pelletType || '—')}</td>
+        <td>${deliveryTypeBadge(o.deliveryType)}</td>
+        <td><strong>${o.quantity || 0}</strong> ${unitLabel(o.deliveryType)}</td>
         <td>${statusBadge(o.status)}</td>
         <td>
           ${o.status === 'Chờ sản xuất' ? `
@@ -271,27 +560,49 @@
 
     async function handleCreateOrder(e) {
         e.preventDefault();
-        const form = e.target;
 
-        const body = {
-            orderDate: document.getElementById('sf-orderDate').value,
-            pickupDate: document.getElementById('sf-pickupDate').value,
-            productName: document.getElementById('sf-productName').value.trim(),
-            pelletType: document.getElementById('sf-pelletType').value.trim(),
-            bagHigro: parseInt(document.getElementById('sf-bagHigro').value) || 0,
-            bagCp: parseInt(document.getElementById('sf-bagCp').value) || 0,
-            bagStar: parseInt(document.getElementById('sf-bagStar').value) || 0,
-            bagNuvo: parseInt(document.getElementById('sf-bagNuvo').value) || 0,
-            bagNasa: parseInt(document.getElementById('sf-bagNasa').value) || 0,
-            bagFarm: parseInt(document.getElementById('sf-bagFarm').value) || 0,
-            siloTruck: document.getElementById('sf-siloTruck').value.trim(),
-            notes: document.getElementById('sf-notes').value.trim(),
-        };
+        const pickupDate = document.getElementById('sf-pickupDate').value;
+        if (!pickupDate) {
+            showToast('Vui lòng chọn Ngày lấy hàng!', 'error');
+            document.getElementById('sf-pickupDate').focus();
+            return;
+        }
+
+        const lines = getFilledLines();
+        if (lines.length === 0) {
+            showToast('Vui lòng nhập ít nhất 1 dòng sản phẩm (Tên cám + Số lượng)!', 'error');
+            document.getElementById('line-product-1').focus();
+            return;
+        }
+
+        // Validate each line
+        for (let i = 0; i < lines.length; i++) {
+            if (!lines[i].productName) {
+                showToast(`Dòng ${i + 1}: Vui lòng nhập Tên cám!`, 'error');
+                return;
+            }
+            if (!lines[i].quantity || lines[i].quantity <= 0) {
+                showToast(`Dòng ${i + 1}: Vui lòng nhập Số lượng!`, 'error');
+                return;
+            }
+        }
+
+        const notes = document.getElementById('sf-notes').value.trim();
+        const today = new Date().toISOString().split('T')[0];
 
         try {
-            await apiCall('/orders', 'POST', body);
-            showToast('Đã tạo đơn hàng thành công! ✅', 'success');
-            form.reset();
+            // Send batch of orders
+            const body = {
+                orderDate: today,
+                pickupDate: pickupDate,
+                notes: notes,
+                items: lines,
+            };
+
+            await apiCall('/orders/batch', 'POST', body);
+            showToast(`Đã tạo ${lines.length} đơn hàng thành công! ✅`, 'success');
+            clearOrderLines();
+            document.getElementById('sf-notes').value = '';
             await loadData();
         } catch (err) {
             showToast(err.message, 'error');
@@ -332,8 +643,8 @@
             <h4>${esc(o.productName || o.productCode)}</h4>
             ${o.pelletType ? `<div class="order-card-detail">⚙️ Dạng: <strong>${esc(o.pelletType)}</strong></div>` : ''}
             <div class="order-card-detail">📅 Lấy hàng: <strong>${formatDateShort(o.pickupDate || o.deliveryDate)}</strong></div>
-            <div class="bag-summary">${bagSummary(o)}</div>
-            ${o.siloTruck ? `<div class="order-card-detail">🚚 Xe silo: <strong>${esc(o.siloTruck)}</strong></div>` : ''}
+            <div class="order-card-detail">🚚 Loại giao: <strong>${esc(o.deliveryType || '—')}</strong></div>
+            <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity || 0} ${unitLabel(o.deliveryType)}</strong></div>
             ${o.notes ? `<div class="order-card-detail">📝 ${esc(o.notes)}</div>` : ''}
           </div>
           <div class="order-card-actions">
@@ -355,7 +666,8 @@
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
-        <td>${totalBags(o)} bao</td>
+        <td>${deliveryTypeBadge(o.deliveryType)}</td>
+        <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : '—'}</td>
         <td>${esc(o.mixerNotes || '—')}</td>
         <td>${statusBadge(o.status)}</td>
@@ -400,8 +712,8 @@
             <h4>${esc(o.productName || o.productCode)}</h4>
             ${o.pelletType ? `<div class="order-card-detail">⚙️ Dạng: <strong>${esc(o.pelletType)}</strong></div>` : ''}
             <div class="order-card-detail">📅 Lấy hàng: <strong>${formatDateShort(o.pickupDate || o.deliveryDate)}</strong></div>
-            <div class="bag-summary">${bagSummary(o)}</div>
-            ${o.siloTruck ? `<div class="order-card-detail">🚚 Xe silo: <strong>${esc(o.siloTruck)}</strong></div>` : ''}
+            <div class="order-card-detail">🚚 Loại giao: <strong>${esc(o.deliveryType || '—')}</strong></div>
+            <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity || 0} ${unitLabel(o.deliveryType)}</strong></div>
             <div class="order-card-detail">🔧 Mixer: <strong>${esc(o.mixerConfirmedBy || '—')}</strong> · ${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : ''}</div>
             ${o.mixerNotes ? `<div class="order-card-detail">📝 SX: ${esc(o.mixerNotes)}</div>` : ''}
           </div>
@@ -424,7 +736,8 @@
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
-        <td>${totalBags(o)} bao</td>
+        <td>${deliveryTypeBadge(o.deliveryType)}</td>
+        <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${o.packingConfirmedDate ? formatDate(o.packingConfirmedDate) : '—'}</td>
         <td>${esc(o.packingNotes || '—')}</td>
         <td>${statusBadge(o.status)}</td>
@@ -495,6 +808,14 @@
         });
     }
 
+    function formatTimeOnly(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString('vi-VN', {
+            hour: '2-digit', minute: '2-digit',
+        });
+    }
+
     function statusBadge(status) {
         const map = {
             'Chờ sản xuất': 'waiting',
@@ -507,26 +828,14 @@
         return `<span class="status-badge ${cls}">${esc(status)}</span>`;
     }
 
-    function totalBags(o) {
-        return (o.bagHigro || 0) + (o.bagCp || 0) + (o.bagStar || 0) +
-            (o.bagNuvo || 0) + (o.bagNasa || 0) + (o.bagFarm || 0);
+    function unitLabel(deliveryType) {
+        return deliveryType === 'Xe silo' ? 'Kg' : 'Bao';
     }
 
-    function bagSummary(o) {
-        const bags = [
-            { name: 'Higro', val: o.bagHigro },
-            { name: 'CP', val: o.bagCp },
-            { name: 'Star', val: o.bagStar },
-            { name: 'Nuvo', val: o.bagNuvo },
-            { name: 'Nasa', val: o.bagNasa },
-            { name: 'Farm', val: o.bagFarm },
-        ].filter(b => b.val > 0);
-
-        if (bags.length === 0) return '<div class="order-card-detail">📦 Chưa nhập số bao</div>';
-
-        return bags.map(b =>
-            `<div class="order-card-detail">📦 ${b.name}: <strong>${b.val} bao</strong></div>`
-        ).join('');
+    function deliveryTypeBadge(type) {
+        const icons = { 'Đại lý': '🏪', 'Trại': '🏠', 'Xe silo': '🚛' };
+        const icon = icons[type] || '📦';
+        return `<span class="delivery-badge">${icon} ${esc(type || '—')}</span>`;
     }
 
     // ==================== EXPOSE TO WINDOW ====================
