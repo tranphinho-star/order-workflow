@@ -52,7 +52,13 @@
 }
 
 /* ==================== RESET & BASE ==================== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 html {
   font-size: 14px;
@@ -121,9 +127,19 @@ body {
 }
 
 @keyframes float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -30px) scale(1.05); }
-  66% { transform: translate(-20px, 20px) scale(0.95); }
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(30px, -30px) scale(1.05);
+  }
+
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
 }
 
 .login-card {
@@ -141,8 +157,15 @@ body {
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .login-logo {
@@ -246,9 +269,19 @@ body {
 }
 
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-6px);
+  }
+
+  75% {
+    transform: translateX(6px);
+  }
 }
 
 .btn {
@@ -514,8 +547,15 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .view-header {
@@ -579,10 +619,25 @@ body {
   height: 24px;
 }
 
-.stat-total .stat-icon { background: rgba(124, 58, 237, 0.15); color: var(--accent-primary); }
-.stat-waiting .stat-icon { background: var(--status-waiting-bg); color: var(--status-waiting); }
-.stat-producing .stat-icon { background: var(--status-produced-bg); color: var(--status-produced); }
-.stat-completed .stat-icon { background: var(--status-completed-bg); color: var(--status-completed); }
+.stat-total .stat-icon {
+  background: rgba(124, 58, 237, 0.15);
+  color: var(--accent-primary);
+}
+
+.stat-waiting .stat-icon {
+  background: var(--status-waiting-bg);
+  color: var(--status-waiting);
+}
+
+.stat-producing .stat-icon {
+  background: var(--status-produced-bg);
+  color: var(--status-produced);
+}
+
+.stat-completed .stat-icon {
+  background: var(--status-completed-bg);
+  color: var(--status-completed);
+}
 
 .stat-info {
   display: flex;
@@ -717,31 +772,46 @@ body {
   background: var(--status-waiting-bg);
   color: var(--status-waiting);
 }
-.status-badge.waiting::before { background: var(--status-waiting); }
+
+.status-badge.waiting::before {
+  background: var(--status-waiting);
+}
 
 .status-badge.producing {
   background: var(--status-producing-bg);
   color: var(--status-producing);
 }
-.status-badge.producing::before { background: var(--status-producing); }
+
+.status-badge.producing::before {
+  background: var(--status-producing);
+}
 
 .status-badge.produced {
   background: var(--status-produced-bg);
   color: var(--status-produced);
 }
-.status-badge.produced::before { background: var(--status-produced); }
+
+.status-badge.produced::before {
+  background: var(--status-produced);
+}
 
 .status-badge.packing-status {
   background: var(--status-packing-bg);
   color: var(--status-packing);
 }
-.status-badge.packing-status::before { background: var(--status-packing); }
+
+.status-badge.packing-status::before {
+  background: var(--status-packing);
+}
 
 .status-badge.completed {
   background: var(--status-completed-bg);
   color: var(--status-completed);
 }
-.status-badge.completed::before { background: var(--status-completed); }
+
+.status-badge.completed::before {
+  background: var(--status-completed);
+}
 
 /* ==================== FORM CARD ==================== */
 .form-card {
@@ -815,6 +885,53 @@ body {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 8px;
+}
+
+/* ==================== BAG SECTION (Google Form fields) ==================== */
+.bag-section {
+  margin-bottom: 20px;
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.bag-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.bag-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.bag-item {
+  margin-bottom: 0 !important;
+}
+
+.bag-item label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.bag-item input {
+  text-align: center;
+  font-weight: 600;
+}
+
+.bag-summary {
+  margin: 4px 0;
+}
+
+@media (max-width: 600px) {
+  .bag-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* ==================== CARDS GRID (Mixer/Packing) ==================== */
@@ -1011,13 +1128,27 @@ body {
 }
 
 @keyframes toastIn {
-  from { opacity: 0; transform: translateX(40px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes toastOut {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(40px); }
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(40px);
+  }
 }
 
 /* ==================== MODAL ==================== */

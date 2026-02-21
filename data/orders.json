@@ -1,6 +1,30 @@
 {
   "orders": [
     {
+      "id": 3,
+      "createdDate": "2026-02-21T10:00:48.411839",
+      "createdBy": "sale",
+      "orderDate": "2026-02-21",
+      "pickupDate": "2026-02-22",
+      "productName": "511B",
+      "pelletType": "Vien 3mm",
+      "bagHigro": 50,
+      "bagCp": 30,
+      "bagStar": 20,
+      "bagNuvo": 0,
+      "bagNasa": 0,
+      "bagFarm": 0,
+      "siloTruck": "",
+      "notes": "Test order",
+      "status": "Chờ sản xuất",
+      "mixerConfirmedBy": null,
+      "mixerConfirmedDate": null,
+      "mixerNotes": "",
+      "packingConfirmedBy": null,
+      "packingConfirmedDate": null,
+      "packingNotes": ""
+    },
+    {
       "id": 2,
       "createdDate": "2026-02-14T11:13:33.943516",
       "createdBy": "sale",
@@ -41,5 +65,5 @@
       "packingNotes": ""
     }
   ],
-  "nextId": 3
+  "nextId": 4
 }

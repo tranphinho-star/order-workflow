@@ -225,12 +225,12 @@
         tbody.innerHTML = orders.map(o => `
       <tr>
         <td><strong>#${o.id}</strong></td>
-        <td>${formatDate(o.createdDate)}</td>
-        <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${o.quantity} ${esc(o.unit)}</td>
-        <td>${formatDateShort(o.deliveryDate)}</td>
+        <td>${formatDateShort(o.orderDate || o.createdDate)}</td>
+        <td>${formatDateShort(o.pickupDate || o.deliveryDate)}</td>
+        <td><strong>${esc(o.productName || o.productCode)}</strong></td>
+        <td>${totalBags(o)} bao</td>
+        <td>${esc(o.siloTruck || '—')}</td>
         <td>${statusBadge(o.status)}</td>
-        <td>${o.packingBags != null ? o.packingBags + ' bao' : '—'}</td>
       </tr>
     `).join('');
     }
@@ -251,10 +251,10 @@
         tbody.innerHTML = orders.map(o => `
       <tr>
         <td><strong>#${o.id}</strong></td>
-        <td>${formatDate(o.createdDate)}</td>
-        <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${o.quantity} ${esc(o.unit)}</td>
-        <td>${formatDateShort(o.deliveryDate)}</td>
+        <td>${formatDateShort(o.orderDate || o.createdDate)}</td>
+        <td>${formatDateShort(o.pickupDate || o.deliveryDate)}</td>
+        <td><strong>${esc(o.productName || o.productCode)}</strong></td>
+        <td>${totalBags(o)} bao</td>
         <td>${statusBadge(o.status)}</td>
         <td>
           ${o.status === 'Chờ sản xuất' ? `
@@ -274,10 +274,17 @@
         const form = e.target;
 
         const body = {
-            productCode: document.getElementById('sf-productCode').value.trim(),
-            quantity: parseFloat(document.getElementById('sf-quantity').value),
-            unit: document.getElementById('sf-unit').value,
-            deliveryDate: document.getElementById('sf-deliveryDate').value,
+            orderDate: document.getElementById('sf-orderDate').value,
+            pickupDate: document.getElementById('sf-pickupDate').value,
+            productName: document.getElementById('sf-productName').value.trim(),
+            pelletType: document.getElementById('sf-pelletType').value.trim(),
+            bagHigro: parseInt(document.getElementById('sf-bagHigro').value) || 0,
+            bagCp: parseInt(document.getElementById('sf-bagCp').value) || 0,
+            bagStar: parseInt(document.getElementById('sf-bagStar').value) || 0,
+            bagNuvo: parseInt(document.getElementById('sf-bagNuvo').value) || 0,
+            bagNasa: parseInt(document.getElementById('sf-bagNasa').value) || 0,
+            bagFarm: parseInt(document.getElementById('sf-bagFarm').value) || 0,
+            siloTruck: document.getElementById('sf-siloTruck').value.trim(),
             notes: document.getElementById('sf-notes').value.trim(),
         };
 
@@ -319,12 +326,14 @@
         <div class="order-card card-waiting">
           <div class="order-card-header">
             <span class="order-card-id">#${o.id}</span>
-            <span class="order-card-date">${formatDate(o.createdDate)}</span>
+            <span class="order-card-date">${formatDateShort(o.orderDate || o.createdDate)}</span>
           </div>
           <div class="order-card-body">
-            <h4>${esc(o.productCode)}</h4>
-            <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity} ${esc(o.unit)}</strong></div>
-            <div class="order-card-detail">📅 Giao hàng: <strong>${formatDateShort(o.deliveryDate)}</strong></div>
+            <h4>${esc(o.productName || o.productCode)}</h4>
+            ${o.pelletType ? `<div class="order-card-detail">⚙️ Dạng: <strong>${esc(o.pelletType)}</strong></div>` : ''}
+            <div class="order-card-detail">📅 Lấy hàng: <strong>${formatDateShort(o.pickupDate || o.deliveryDate)}</strong></div>
+            <div class="bag-summary">${bagSummary(o)}</div>
+            ${o.siloTruck ? `<div class="order-card-detail">🚚 Xe silo: <strong>${esc(o.siloTruck)}</strong></div>` : ''}
             ${o.notes ? `<div class="order-card-detail">📝 ${esc(o.notes)}</div>` : ''}
           </div>
           <div class="order-card-actions">
@@ -345,8 +354,8 @@
         doneTbody.innerHTML = done.map(o => `
       <tr>
         <td><strong>#${o.id}</strong></td>
-        <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${o.quantity} ${esc(o.unit)}</td>
+        <td><strong>${esc(o.productName || o.productCode)}</strong></td>
+        <td>${totalBags(o)} bao</td>
         <td>${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : '—'}</td>
         <td>${esc(o.mixerNotes || '—')}</td>
         <td>${statusBadge(o.status)}</td>
@@ -385,20 +394,18 @@
         <div class="order-card card-produced">
           <div class="order-card-header">
             <span class="order-card-id">#${o.id}</span>
-            <span class="order-card-date">${formatDate(o.createdDate)}</span>
+            <span class="order-card-date">${formatDateShort(o.orderDate || o.createdDate)}</span>
           </div>
           <div class="order-card-body">
-            <h4>${esc(o.productCode)}</h4>
-            <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity} ${esc(o.unit)}</strong></div>
-            <div class="order-card-detail">📅 Giao hàng: <strong>${formatDateShort(o.deliveryDate)}</strong></div>
+            <h4>${esc(o.productName || o.productCode)}</h4>
+            ${o.pelletType ? `<div class="order-card-detail">⚙️ Dạng: <strong>${esc(o.pelletType)}</strong></div>` : ''}
+            <div class="order-card-detail">📅 Lấy hàng: <strong>${formatDateShort(o.pickupDate || o.deliveryDate)}</strong></div>
+            <div class="bag-summary">${bagSummary(o)}</div>
+            ${o.siloTruck ? `<div class="order-card-detail">🚚 Xe silo: <strong>${esc(o.siloTruck)}</strong></div>` : ''}
             <div class="order-card-detail">🔧 Mixer: <strong>${esc(o.mixerConfirmedBy || '—')}</strong> · ${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : ''}</div>
             ${o.mixerNotes ? `<div class="order-card-detail">📝 SX: ${esc(o.mixerNotes)}</div>` : ''}
           </div>
           <div class="card-action-row">
-            <div class="form-group">
-              <label>Số bao đã đóng <span class="required">*</span></label>
-              <input type="number" id="packing-bags-${o.id}" min="1" required placeholder="VD: 100">
-            </div>
             <div class="form-group">
               <label>Ghi chú đóng gói</label>
               <input type="text" id="packing-note-${o.id}" placeholder="Ghi chú (tùy chọn)">
@@ -416,9 +423,8 @@
         doneTbody.innerHTML = done.map(o => `
       <tr>
         <td><strong>#${o.id}</strong></td>
-        <td><strong>${esc(o.productCode)}</strong></td>
-        <td>${o.quantity} ${esc(o.unit)}</td>
-        <td><strong>${o.packingBags || 0} bao</strong></td>
+        <td><strong>${esc(o.productName || o.productCode)}</strong></td>
+        <td>${totalBags(o)} bao</td>
         <td>${o.packingConfirmedDate ? formatDate(o.packingConfirmedDate) : '—'}</td>
         <td>${esc(o.packingNotes || '—')}</td>
         <td>${statusBadge(o.status)}</td>
@@ -427,20 +433,13 @@
     }
 
     async function confirmPacking(id) {
-        const bags = parseInt(document.getElementById(`packing-bags-${id}`)?.value);
         const notes = document.getElementById(`packing-note-${id}`)?.value?.trim() || '';
-
-        if (!bags || bags <= 0) {
-            showToast('Vui lòng nhập số bao đã đóng', 'error');
-            return;
-        }
 
         try {
             await apiCall(`/orders/${id}/packing`, 'PUT', {
-                packingBags: bags,
                 packingNotes: notes,
             });
-            showToast(`Đã xác nhận đóng gói đơn #${id}: ${bags} bao 📦`, 'success');
+            showToast(`Đã xác nhận đóng gói đơn #${id} 📦`, 'success');
             await loadData();
         } catch (err) {
             showToast(err.message, 'error');
@@ -506,6 +505,28 @@
         };
         const cls = map[status] || 'waiting';
         return `<span class="status-badge ${cls}">${esc(status)}</span>`;
+    }
+
+    function totalBags(o) {
+        return (o.bagHigro || 0) + (o.bagCp || 0) + (o.bagStar || 0) +
+            (o.bagNuvo || 0) + (o.bagNasa || 0) + (o.bagFarm || 0);
+    }
+
+    function bagSummary(o) {
+        const bags = [
+            { name: 'Higro', val: o.bagHigro },
+            { name: 'CP', val: o.bagCp },
+            { name: 'Star', val: o.bagStar },
+            { name: 'Nuvo', val: o.bagNuvo },
+            { name: 'Nasa', val: o.bagNasa },
+            { name: 'Farm', val: o.bagFarm },
+        ].filter(b => b.val > 0);
+
+        if (bags.length === 0) return '<div class="order-card-detail">📦 Chưa nhập số bao</div>';
+
+        return bags.map(b =>
+            `<div class="order-card-detail">📦 ${b.name}: <strong>${b.val} bao</strong></div>`
+        ).join('');
     }
 
     // ==================== EXPOSE TO WINDOW ====================

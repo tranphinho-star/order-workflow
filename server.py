@@ -53,12 +53,22 @@ class JsonStore:
             'id': data['nextId'],
             'createdDate': now_iso(),
             'createdBy': username,
-            **order_data,
+            'orderDate': order_data.get('orderDate', ''),
+            'pickupDate': order_data.get('pickupDate', ''),
+            'productName': order_data.get('productName', ''),
+            'pelletType': order_data.get('pelletType', ''),
+            'bagHigro': order_data.get('bagHigro', 0) or 0,
+            'bagCp': order_data.get('bagCp', 0) or 0,
+            'bagStar': order_data.get('bagStar', 0) or 0,
+            'bagNuvo': order_data.get('bagNuvo', 0) or 0,
+            'bagNasa': order_data.get('bagNasa', 0) or 0,
+            'bagFarm': order_data.get('bagFarm', 0) or 0,
+            'siloTruck': order_data.get('siloTruck', ''),
+            'notes': order_data.get('notes', ''),
             'status': 'Chờ sản xuất',
             'mixerConfirmedBy': None,
             'mixerConfirmedDate': None,
             'mixerNotes': '',
-            'packingBags': None,
             'packingConfirmedBy': None,
             'packingConfirmedDate': None,
             'packingNotes': '',
@@ -152,13 +162,32 @@ class PgStore:
                 packing_notes TEXT DEFAULT ''
             )
         ''')
+        # Migration: add new Google Form columns
+        new_columns = [
+            ("order_date", "VARCHAR(20) DEFAULT ''"),
+            ("pickup_date", "VARCHAR(20) DEFAULT ''"),
+            ("product_name", "VARCHAR(200) DEFAULT ''"),
+            ("pellet_type", "VARCHAR(100) DEFAULT ''"),
+            ("bag_higro", "INTEGER DEFAULT 0"),
+            ("bag_cp", "INTEGER DEFAULT 0"),
+            ("bag_star", "INTEGER DEFAULT 0"),
+            ("bag_nuvo", "INTEGER DEFAULT 0"),
+            ("bag_nasa", "INTEGER DEFAULT 0"),
+            ("bag_farm", "INTEGER DEFAULT 0"),
+            ("silo_truck", "VARCHAR(200) DEFAULT ''"),
+        ]
+        for col_name, col_type in new_columns:
+            try:
+                cur.execute(f'ALTER TABLE orders ADD COLUMN {col_name} {col_type}')
+            except Exception:
+                conn.rollback()
         conn.commit()
         cur.close()
         conn.close()
         print("[DB] PostgreSQL table 'orders' ready")
 
     def _row_to_dict(self, row):
-        return {
+        d = {
             'id': row[0],
             'createdDate': row[1].isoformat() if row[1] else None,
             'createdBy': row[2],
@@ -176,6 +205,20 @@ class PgStore:
             'packingConfirmedDate': row[14].isoformat() if row[14] else None,
             'packingNotes': row[15],
         }
+        # New columns (indices 16+)
+        if len(row) > 16:
+            d['orderDate'] = row[16] or ''
+            d['pickupDate'] = row[17] or ''
+            d['productName'] = row[18] or ''
+            d['pelletType'] = row[19] or ''
+            d['bagHigro'] = row[20] or 0
+            d['bagCp'] = row[21] or 0
+            d['bagStar'] = row[22] or 0
+            d['bagNuvo'] = row[23] or 0
+            d['bagNasa'] = row[24] or 0
+            d['bagFarm'] = row[25] or 0
+            d['siloTruck'] = row[26] or ''
+        return d
 
     def get_orders(self):
         conn = self._conn()
@@ -190,15 +233,31 @@ class PgStore:
         conn = self._conn()
         cur = conn.cursor()
         cur.execute('''
-            INSERT INTO orders (created_by, product_code, quantity, unit, delivery_date, notes)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+            INSERT INTO orders (
+                created_by, product_code, quantity, unit, delivery_date, notes,
+                order_date, pickup_date, product_name, pellet_type,
+                bag_higro, bag_cp, bag_star, bag_nuvo, bag_nasa, bag_farm, silo_truck
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
         ''', (
             username,
-            order_data.get('productCode', ''),
-            order_data.get('quantity', 0),
-            order_data.get('unit', 'tấn'),
-            order_data.get('deliveryDate', ''),
+            order_data.get('productName', ''),
+            0,
+            'bao',
+            order_data.get('pickupDate', ''),
             order_data.get('notes', ''),
+            order_data.get('orderDate', ''),
+            order_data.get('pickupDate', ''),
+            order_data.get('productName', ''),
+            order_data.get('pelletType', ''),
+            order_data.get('bagHigro', 0) or 0,
+            order_data.get('bagCp', 0) or 0,
+            order_data.get('bagStar', 0) or 0,
+            order_data.get('bagNuvo', 0) or 0,
+            order_data.get('bagNasa', 0) or 0,
+            order_data.get('bagFarm', 0) or 0,
+            order_data.get('siloTruck', ''),
         ))
         row = cur.fetchone()
         conn.commit()
