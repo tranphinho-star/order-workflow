@@ -182,7 +182,12 @@ class PgStore:
 
     def _conn(self):
         import psycopg2
-        return psycopg2.connect(self.database_url, sslmode='require')
+        conn = psycopg2.connect(self.database_url, sslmode='require')
+        cur = conn.cursor()
+        cur.execute("SET timezone='Asia/Ho_Chi_Minh'")
+        conn.commit()
+        cur.close()
+        return conn
 
     def _init_db(self):
         conn = self._conn()
@@ -460,7 +465,8 @@ class PgStore:
 
 
 def now_iso():
-    return datetime.datetime.now().isoformat()
+    VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+    return datetime.datetime.now(VN_TZ).isoformat()
 
 def get_local_ip():
     try:
