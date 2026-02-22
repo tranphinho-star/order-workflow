@@ -11,6 +11,9 @@
     let salesDateFilter = '';
     let isGuestMode = false;
     let dashboardDateFilter = ''; // '' = all, 'YYYY-MM-DD' = specific date
+    let lastKnownUpdate = 0;
+    let autoRefreshInterval = null;
+    const AUTO_REFRESH_SECONDS = 15;
 
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', init);
@@ -208,6 +211,7 @@
     }
 
     function handleLogout() {
+        stopAutoRefresh();
         if (!isGuestMode) {
             fetch(`${API_BASE}/logout`, {
                 method: 'POST',
@@ -217,6 +221,7 @@
         authToken = null;
         currentUser = null;
         isGuestMode = false;
+        lastKnownUpdate = 0;
         sessionStorage.removeItem('orderWorkflow');
         showLogin();
     }
@@ -283,6 +288,7 @@
         }
 
         loadData();
+        startAutoRefresh();
     }
 
     function switchView(view) {
@@ -306,7 +312,7 @@
     }
 
     // ==================== DATA ====================
-    async function loadData() {
+    async function loadData(silent) {
         try {
             let res;
             if (isGuestMode) {
@@ -323,7 +329,36 @@
             allOrders = await res.json();
             renderCurrentView();
         } catch (err) {
-            showToast('Không thể tải dữ liệu', 'error');
+            if (!silent) showToast('Không thể tải dữ liệu', 'error');
+        }
+    }
+
+    // ==================== AUTO-REFRESH (Smart Polling) ====================
+    function startAutoRefresh() {
+        stopAutoRefresh();
+        autoRefreshInterval = setInterval(checkForUpdates, AUTO_REFRESH_SECONDS * 1000);
+    }
+
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+
+    async function checkForUpdates() {
+        try {
+            const res = await fetch(`${API_BASE}/last-update`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (lastKnownUpdate > 0 && data.lastUpdate > lastKnownUpdate) {
+                // Data changed! Auto-refresh
+                await loadData(true);
+                showToast('🔄 Dữ liệu đã được cập nhật', 'info');
+            }
+            lastKnownUpdate = data.lastUpdate;
+        } catch (err) {
+            // Silently ignore polling errors
         }
     }
 

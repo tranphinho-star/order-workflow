@@ -10,6 +10,7 @@ import socket
 import uuid
 import datetime
 import urllib.parse
+import time
 
 PORT = int(os.environ.get('PORT', 8080))
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -26,6 +27,14 @@ DEFAULT_USERS = {
 }
 
 tokens = {}
+
+# ==================== AUTO-REFRESH (Smart Polling) ====================
+last_update_time = time.time()
+
+def notify_update():
+    """Update timestamp when data changes. Frontend polls this to detect changes."""
+    global last_update_time
+    last_update_time = time.time()
 
 def _load_users():
     """Load user passwords from users.json, fallback to defaults."""
@@ -500,7 +509,11 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
 
-        if path == '/api/me':
+        if path == '/api/last-update':
+            # Smart polling: returns timestamp from RAM, NO database query
+            return self.send_json({'lastUpdate': last_update_time})
+
+        elif path == '/api/me':
             user = self.get_user()
             if not user:
                 return self.send_json({'error': 'Unauthorized'}, 401)
@@ -589,6 +602,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
                     db.save_user_password(username, new_password)
                 else:
                     _save_users(USERS)
+                notify_update()
                 return self.send_json({'success': True, 'message': f'Đã đổi mật khẩu cho {username}'})
             return self.send_json({'error': 'User not found'}, 404)
 
@@ -600,6 +614,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
                 return self.send_json({'error': 'Chỉ Sales mới được tạo đơn hàng'}, 403)
             body = self.read_body()
             order = db.add_order(body, user['username'])
+            notify_update()
             return self.send_json(order)
 
         elif path == '/api/orders/batch':
@@ -627,6 +642,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
                 order = db.add_order(order_data, user['username'])
                 created_orders.append(order)
 
+            notify_update()
             return self.send_json({'created': len(created_orders), 'orders': created_orders})
 
         else:
@@ -646,6 +662,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             order = db.update_mixer(order_id, body.get('status', 'Hoàn thành SX'), body.get('mixerNotes', ''), user['username'])
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
+            notify_update()
             return self.send_json(order)
 
         elif '/api/orders/' in path and path.endswith('/packing'):
@@ -656,6 +673,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             order = db.update_packing(order_id, body.get('packingBags', 0), body.get('packingNotes', ''), user['username'])
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
+            notify_update()
             return self.send_json(order)
 
         else:
@@ -676,6 +694,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
             if result is False:
                 return self.send_json({'error': 'Chỉ xóa được đơn đang Chờ sản xuất'}, 403)
+            notify_update()
             return self.send_json({'success': True})
 
         else:
