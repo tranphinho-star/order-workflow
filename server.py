@@ -11,6 +11,7 @@ import uuid
 import datetime
 import urllib.parse
 import time
+import zalo_notifier
 
 PORT = int(os.environ.get('PORT', 8080))
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -527,6 +528,10 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             # Smart polling: returns timestamp from RAM, NO database query
             return self.send_json({'lastUpdate': last_update_time})
 
+        elif path == '/api/zalo/config':
+            config = zalo_notifier.get_config()
+            return self.send_json(config)
+
         elif path == '/api/me':
             user = self.get_user()
             if not user:
@@ -629,6 +634,8 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             body = self.read_body()
             order = db.add_order(body, user['username'])
             notify_update()
+            # Gửi thông báo Zalo cho Trưởng ca
+            zalo_notifier.notify_new_order(order)
             return self.send_json(order)
 
         elif path == '/api/orders/batch':
@@ -657,7 +664,20 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
                 created_orders.append(order)
 
             notify_update()
+            # Gửi thông báo Zalo cho Trưởng ca (batch)
+            zalo_notifier.notify_new_orders_batch(created_orders)
             return self.send_json({'created': len(created_orders), 'orders': created_orders})
+
+        # ==================== ZALO CONFIG API ====================
+        elif path == '/api/zalo/config':
+            body = self.read_body()
+            config = zalo_notifier.update_config(body)
+            notify_update()
+            return self.send_json({'success': True, 'message': 'Đã cập nhật cấu hình Zalo'})
+
+        elif path == '/api/zalo/test':
+            result = zalo_notifier.test_send()
+            return self.send_json(result)
 
         else:
             self.send_json({'error': 'Not found'}, 404)
@@ -729,6 +749,9 @@ if __name__ == '__main__':
     else:
         print("📁 Sử dụng JSON file (local mode)")
         db = JsonStore()
+
+    # Initialize Zalo notifier (PostgreSQL on Render, JSON locally)
+    zalo_notifier.init(DATABASE_URL)
 
     local_ip = get_local_ip()
     server = http.server.HTTPServer(('0.0.0.0', PORT), OrderHandler)

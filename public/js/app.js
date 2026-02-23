@@ -106,6 +106,13 @@
         // Modal
         document.getElementById('modal-close').addEventListener('click', closeModal);
         document.getElementById('modal-cancel').addEventListener('click', closeModal);
+
+        // Zalo settings
+        document.getElementById('btn-zalo-save')?.addEventListener('click', handleZaloSave);
+        document.getElementById('btn-zalo-test')?.addEventListener('click', handleZaloTest);
+        document.getElementById('zalo-enabled')?.addEventListener('change', function () {
+            document.getElementById('zalo-status-label').textContent = this.checked ? 'Đang bật ✅' : 'Đang tắt';
+        });
     }
 
     // ==================== ORDER LINES TABLE ====================
@@ -267,6 +274,9 @@
             document.getElementById('admin-pw-input').value = '';
             document.getElementById('admin-pw-error').style.display = 'none';
             switchView('dashboard');
+            // Load Zalo settings in guest/admin mode
+            document.getElementById('zalo-settings-section').style.display = 'block';
+            loadZaloConfig();
         } else {
             if (navSales) navSales.style.display = '';
             if (navMixer) navMixer.style.display = '';
@@ -871,6 +881,80 @@
         const icons = { 'Đại lý': '🏪', 'Trại': '🏠', 'Xe silo': '🚛' };
         const icon = icons[type] || '📦';
         return `<span class="delivery-badge">${icon} ${esc(type || '—')}</span>`;
+    }
+
+    // ==================== ZALO SETTINGS ====================
+    async function loadZaloConfig() {
+        try {
+            const res = await fetch(`${API_BASE}/zalo/config`);
+            const config = await res.json();
+            document.getElementById('zalo-enabled').checked = config.enabled || false;
+            document.getElementById('zalo-status-label').textContent = config.enabled ? 'Đang bật ✅' : 'Đang tắt';
+            document.getElementById('zalo-imei').value = config.imei || '';
+            if (!config.cookies_set) {
+                document.getElementById('zalo-cookies').value = '';
+                document.getElementById('zalo-cookies').placeholder = 'Nhập Cookies từ tài khoản Zalo';
+            } else {
+                document.getElementById('zalo-cookies').value = '';
+                document.getElementById('zalo-cookies').placeholder = '(Cookies đã lưu) Nhập mới để thay đổi';
+            }
+            document.getElementById('zalo-notify-mode').value = config.notify_mode || 'group';
+            document.getElementById('zalo-user-id').value = config.user_id || '';
+            document.getElementById('zalo-group-id').value = config.group_id || '';
+        } catch (err) {
+            console.error('Load Zalo config failed:', err);
+        }
+    }
+
+    async function handleZaloSave() {
+        const config = {
+            enabled: document.getElementById('zalo-enabled').checked,
+            imei: document.getElementById('zalo-imei').value.trim(),
+            notify_mode: document.getElementById('zalo-notify-mode').value,
+            user_id: document.getElementById('zalo-user-id').value.trim(),
+            group_id: document.getElementById('zalo-group-id').value.trim(),
+        };
+        // Only send cookies if user entered new value
+        const cookies = document.getElementById('zalo-cookies').value.trim();
+        if (cookies) {
+            config.cookies = cookies;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/zalo/config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config),
+            });
+            const data = await res.json();
+            showToast('Đã lưu cấu hình Zalo! 💬', 'success');
+            loadZaloConfig();
+        } catch (err) {
+            showToast('Lỗi lưu cấu hình: ' + err.message, 'error');
+        }
+    }
+
+    async function handleZaloTest() {
+        const resultEl = document.getElementById('zalo-result');
+        resultEl.style.display = 'block';
+        resultEl.style.color = 'var(--text-secondary)';
+        resultEl.textContent = '⏳ Đang gửi tin nhắn test...';
+        try {
+            const res = await fetch(`${API_BASE}/zalo/test`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            if (data.success) {
+                resultEl.style.color = '#4ade80';
+                resultEl.textContent = '✅ ' + (data.message || 'Gửi thành công!');
+            } else {
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = '❌ ' + (data.error || 'Lỗi không xác định');
+            }
+        } catch (err) {
+            resultEl.style.color = '#f87171';
+            resultEl.textContent = '❌ Lỗi kết nối: ' + err.message;
+        }
     }
 
     // ==================== EXPOSE TO WINDOW ====================

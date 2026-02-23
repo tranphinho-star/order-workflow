@@ -332,6 +332,52 @@
             </div>
           </div>
         </div>
+
+        <!-- Zalo Notification Settings (Admin/Guest mode only) -->
+        <div class="section" id="zalo-settings-section" style="display:none;">
+          <div class="section-header">
+            <h3>💬 Cài đặt thông báo Zalo</h3>
+          </div>
+          <div class="zalo-settings-body" style="max-width:600px;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+              <label style="color:var(--text-secondary);font-weight:600;white-space:nowrap;">Bật thông báo:</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="zalo-enabled">
+                <span class="toggle-slider"></span>
+              </label>
+              <span id="zalo-status-label" style="font-size:0.85rem;color:var(--text-secondary);">Đang tắt</span>
+            </div>
+            <div class="form-group">
+              <label>IMEI</label>
+              <input type="text" id="zalo-imei" placeholder="Nhập IMEI từ tài khoản Zalo" class="form-input">
+            </div>
+            <div class="form-group">
+              <label>Cookies</label>
+              <textarea id="zalo-cookies" placeholder="Nhập Cookies từ tài khoản Zalo" class="form-input" rows="3" style="font-size:0.8rem;"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Chế độ gửi</label>
+              <select id="zalo-notify-mode" class="form-input">
+                <option value="user">👤 Gửi cá nhân (Trưởng ca)</option>
+                <option value="group" selected>👥 Gửi nhóm Zalo</option>
+                <option value="both">👤👥 Cả hai</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>User ID (Trưởng ca)</label>
+              <input type="text" id="zalo-user-id" placeholder="ID Zalo của Trưởng ca" class="form-input">
+            </div>
+            <div class="form-group">
+              <label>Group ID (Nhóm Zalo)</label>
+              <input type="text" id="zalo-group-id" placeholder="ID nhóm Zalo" class="form-input">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+              <button class="btn btn-primary btn-sm" id="btn-zalo-save">💾 Lưu cấu hình</button>
+              <button class="btn btn-ghost btn-sm" id="btn-zalo-test">🔔 Gửi test</button>
+            </div>
+            <div id="zalo-result" style="margin-top:12px;font-size:0.85rem;display:none;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- ===== SALES VIEW ===== -->
