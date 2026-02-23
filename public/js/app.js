@@ -535,12 +535,8 @@
             orders = orders.filter(o => o.status === filter);
         }
 
-        // Sort by pickup date ascending
-        orders = [...orders].sort((a, b) => {
-            const dateA = new Date(a.pickupDate || a.deliveryDate || '9999');
-            const dateB = new Date(b.pickupDate || b.deliveryDate || '9999');
-            return dateA - dateB;
-        });
+        orders = sortByPickupDate(orders);
+        const dateColorMap = buildDateColorMap(orders);
 
         const tbody = document.getElementById('dashboard-tbody');
         const empty = document.getElementById('dashboard-empty');
@@ -550,21 +546,6 @@
             empty.style.display = 'block';
             return;
         }
-
-        // Build color map for unique pickup dates
-        const dateColors = [
-            '#a78bfa', // purple
-            '#34d399', // emerald
-            '#fbbf24', // amber
-            '#60a5fa', // blue
-            '#f472b6', // pink
-            '#fb923c', // orange
-            '#2dd4bf', // teal
-            '#c084fc', // violet
-        ];
-        const uniqueDates = [...new Set(orders.map(o => formatDateShort(o.pickupDate || o.deliveryDate)))];
-        const dateColorMap = {};
-        uniqueDates.forEach((d, i) => { dateColorMap[d] = dateColors[i % dateColors.length]; });
 
         empty.style.display = 'none';
         tbody.innerHTML = orders.map(o => {
@@ -600,6 +581,9 @@
             });
         }
 
+        orders = sortByPickupDate(orders);
+        const dateColorMap = buildDateColorMap(orders);
+
         const tbody = document.getElementById('sales-tbody');
         const empty = document.getElementById('sales-empty');
 
@@ -610,10 +594,13 @@
         }
 
         empty.style.display = 'none';
-        tbody.innerHTML = orders.map(o => `
+        tbody.innerHTML = orders.map(o => {
+            const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
+            const pickupColor = dateColorMap[pickupStr] || '#e2e8f0';
+            return `
       <tr>
         <td>${formatTimeOnly(o.createdDate)}</td>
-        <td>${formatDateShort(o.pickupDate || o.deliveryDate)}</td>
+        <td style="color:${pickupColor};font-weight:600;">${pickupStr}</td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
         <td>${esc(o.pelletType || '—')}</td>
         <td>${deliveryTypeBadge(o.deliveryType)}</td>
@@ -628,8 +615,8 @@
             </div>
           ` : ''}
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+        }).join('');
     }
 
     async function handleCreateOrder(e) {
@@ -696,8 +683,13 @@
 
     // ==================== MIXER VIEW ====================
     function renderMixerView() {
-        const waiting = allOrders.filter(o => o.status === 'Chờ sản xuất');
-        const done = allOrders.filter(o => ['Đang sản xuất', 'Hoàn thành SX', 'Đang đóng gói', 'Hoàn thành'].includes(o.status));
+        let waiting = allOrders.filter(o => o.status === 'Chờ sản xuất');
+        let done = allOrders.filter(o => ['Đang sản xuất', 'Hoàn thành SX', 'Đang đóng gói', 'Hoàn thành'].includes(o.status));
+
+        waiting = sortByPickupDate(waiting);
+        done = sortByPickupDate(done);
+        const waitingColorMap = buildDateColorMap(waiting);
+        const doneColorMap = buildDateColorMap(done);
 
         const cardsEl = document.getElementById('mixer-cards');
         const emptyEl = document.getElementById('mixer-empty');
@@ -707,7 +699,10 @@
             emptyEl.style.display = 'block';
         } else {
             emptyEl.style.display = 'none';
-            cardsEl.innerHTML = waiting.map(o => `
+            cardsEl.innerHTML = waiting.map(o => {
+                const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
+                const pickupColor = waitingColorMap[pickupStr] || '#e2e8f0';
+                return `
         <div class="order-card card-waiting">
           <div class="order-card-header">
             <span class="order-card-id">#${o.id}</span>
@@ -716,7 +711,7 @@
           <div class="order-card-body">
             <h4>${esc(o.productName || o.productCode)}</h4>
             ${o.pelletType ? `<div class="order-card-detail">⚙️ Dạng: <strong>${esc(o.pelletType)}</strong></div>` : ''}
-            <div class="order-card-detail">📅 Lấy hàng: <strong>${formatDateShort(o.pickupDate || o.deliveryDate)}</strong></div>
+            <div class="order-card-detail">📅 Lấy hàng: <strong style="color:${pickupColor}">${pickupStr}</strong></div>
             <div class="order-card-detail">🚚 Loại giao: <strong>${esc(o.deliveryType || '—')}</strong></div>
             <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity || 0} ${unitLabel(o.deliveryType)}</strong></div>
             ${o.notes ? `<div class="order-card-detail">📝 ${esc(o.notes)}</div>` : ''}
@@ -730,23 +725,27 @@
           <button class="btn btn-success card-confirm-btn" onclick="app.confirmMixer(${o.id})">
             ✅ Xác nhận hoàn thành sản xuất
           </button>
-        </div>
-      `).join('');
+        </div>`;
+            }).join('');
         }
 
         // Done table
         const doneTbody = document.getElementById('mixer-done-tbody');
-        doneTbody.innerHTML = done.map(o => `
+        doneTbody.innerHTML = done.map(o => {
+            const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
+            const pickupColor = doneColorMap[pickupStr] || '#e2e8f0';
+            return `
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
+        <td style="color:${pickupColor};font-weight:600;">${pickupStr}</td>
         <td>${deliveryTypeBadge(o.deliveryType)}</td>
         <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : '—'}</td>
         <td>${esc(o.mixerNotes || '—')}</td>
         <td>${statusBadge(o.status)}</td>
-      </tr>
-    `).join('');
+      </tr>`;
+        }).join('');
     }
 
     async function confirmMixer(id) {
@@ -765,8 +764,13 @@
 
     // ==================== PACKING VIEW ====================
     function renderPackingView() {
-        const waiting = allOrders.filter(o => o.status === 'Hoàn thành SX');
-        const done = allOrders.filter(o => o.status === 'Hoàn thành');
+        let waiting = allOrders.filter(o => o.status === 'Hoàn thành SX');
+        let done = allOrders.filter(o => o.status === 'Hoàn thành');
+
+        waiting = sortByPickupDate(waiting);
+        done = sortByPickupDate(done);
+        const waitingColorMap = buildDateColorMap(waiting);
+        const doneColorMap = buildDateColorMap(done);
 
         const cardsEl = document.getElementById('packing-cards');
         const emptyEl = document.getElementById('packing-empty');
@@ -776,7 +780,10 @@
             emptyEl.style.display = 'block';
         } else {
             emptyEl.style.display = 'none';
-            cardsEl.innerHTML = waiting.map(o => `
+            cardsEl.innerHTML = waiting.map(o => {
+                const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
+                const pickupColor = waitingColorMap[pickupStr] || '#e2e8f0';
+                return `
         <div class="order-card card-produced">
           <div class="order-card-header">
             <span class="order-card-id">#${o.id}</span>
@@ -785,7 +792,7 @@
           <div class="order-card-body">
             <h4>${esc(o.productName || o.productCode)}</h4>
             ${o.pelletType ? `<div class="order-card-detail">⚙️ Dạng: <strong>${esc(o.pelletType)}</strong></div>` : ''}
-            <div class="order-card-detail">📅 Lấy hàng: <strong>${formatDateShort(o.pickupDate || o.deliveryDate)}</strong></div>
+            <div class="order-card-detail">📅 Lấy hàng: <strong style="color:${pickupColor}">${pickupStr}</strong></div>
             <div class="order-card-detail">🚚 Loại giao: <strong>${esc(o.deliveryType || '—')}</strong></div>
             <div class="order-card-detail">📦 Số lượng: <strong>${o.quantity || 0} ${unitLabel(o.deliveryType)}</strong></div>
             <div class="order-card-detail">🔧 Mixer: <strong>${esc(o.mixerConfirmedBy || '—')}</strong> · ${o.mixerConfirmedDate ? formatDate(o.mixerConfirmedDate) : ''}</div>
@@ -800,23 +807,27 @@
           <button class="btn btn-primary card-confirm-btn" onclick="app.confirmPacking(${o.id})">
             📦 Xác nhận đóng gói
           </button>
-        </div>
-      `).join('');
+        </div>`;
+            }).join('');
         }
 
         // Done table
         const doneTbody = document.getElementById('packing-done-tbody');
-        doneTbody.innerHTML = done.map(o => `
+        doneTbody.innerHTML = done.map(o => {
+            const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
+            const pickupColor = doneColorMap[pickupStr] || '#e2e8f0';
+            return `
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
+        <td style="color:${pickupColor};font-weight:600;">${pickupStr}</td>
         <td>${deliveryTypeBadge(o.deliveryType)}</td>
         <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${o.packingConfirmedDate ? formatDate(o.packingConfirmedDate) : '—'}</td>
         <td>${esc(o.packingNotes || '—')}</td>
         <td>${statusBadge(o.status)}</td>
-      </tr>
-    `).join('');
+      </tr>`;
+        }).join('');
     }
 
     async function confirmPacking(id) {
@@ -858,6 +869,26 @@
     }
 
     // ==================== HELPERS ====================
+    const DATE_COLORS = [
+        '#a78bfa', '#34d399', '#fbbf24', '#60a5fa',
+        '#f472b6', '#fb923c', '#2dd4bf', '#c084fc',
+    ];
+
+    function sortByPickupDate(orders) {
+        return [...orders].sort((a, b) => {
+            const dateA = new Date(a.pickupDate || a.deliveryDate || '9999');
+            const dateB = new Date(b.pickupDate || b.deliveryDate || '9999');
+            return dateA - dateB;
+        });
+    }
+
+    function buildDateColorMap(orders) {
+        const uniqueDates = [...new Set(orders.map(o => formatDateShort(o.pickupDate || o.deliveryDate)))];
+        const map = {};
+        uniqueDates.forEach((d, i) => { map[d] = DATE_COLORS[i % DATE_COLORS.length]; });
+        return map;
+    }
+
     function esc(str) {
         if (str == null) return '';
         const div = document.createElement('div');
