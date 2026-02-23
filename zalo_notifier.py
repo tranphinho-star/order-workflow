@@ -243,30 +243,64 @@ def _format_batch_message(orders):
     return msg
 
 
+# ==================== ZLAPI HELPERS ====================
+
+def _parse_cookies(cookie_str):
+    """Parse raw cookie string into a dict for zlapi."""
+    if isinstance(cookie_str, dict):
+        return cookie_str
+    cookies = {}
+    if not cookie_str:
+        return cookies
+    for item in cookie_str.split(';'):
+        item = item.strip()
+        if '=' in item:
+            key, val = item.split('=', 1)
+            cookies[key.strip()] = val.strip()
+    return cookies
+
+
+def _create_bot(config):
+    """Create ZaloAPI bot instance with correct authentication."""
+    from zlapi import ZaloAPI
+
+    imei = config.get('imei', '')
+    cookies_raw = config.get('cookies', '')
+    cookies_dict = _parse_cookies(cookies_raw)
+
+    # zlapi requires phone + password as first 2 args, even when using cookies
+    # Pass empty strings when authenticating with cookies only
+    bot = ZaloAPI(
+        "<phone>", "<password>",
+        imei=imei,
+        session_cookies=cookies_dict
+    )
+    return bot
+
+
 # ==================== SEND LOGIC ====================
 
 def _do_send(message, config):
     """Actually send the Zalo message. Runs in background thread."""
     try:
-        from zlapi import ZaloAPI
-        from zlapi.models import Message
+        from zlapi.models import Message, ThreadType
 
-        bot = ZaloAPI(config['imei'], config['cookies'])
+        bot = _create_bot(config)
         msg = Message(text=message)
         mode = config.get('notify_mode', 'group')
 
         if mode == 'user' and config.get('user_id'):
-            bot.send(msg, thread_id=config['user_id'], thread_type=0)
+            bot.send(msg, thread_id=config['user_id'], thread_type=ThreadType.USER)
             print(f"[ZALO] ✅ Đã gửi tin nhắn cho Trưởng ca (user_id: {config['user_id']})")
         elif mode == 'group' and config.get('group_id'):
-            bot.send(msg, thread_id=config['group_id'], thread_type=1)
+            bot.send(msg, thread_id=config['group_id'], thread_type=ThreadType.GROUP)
             print(f"[ZALO] ✅ Đã gửi tin nhắn vào nhóm (group_id: {config['group_id']})")
         elif mode == 'both':
             if config.get('user_id'):
-                bot.send(msg, thread_id=config['user_id'], thread_type=0)
+                bot.send(msg, thread_id=config['user_id'], thread_type=ThreadType.USER)
                 print(f"[ZALO] ✅ Đã gửi cho Trưởng ca")
             if config.get('group_id'):
-                bot.send(msg, thread_id=config['group_id'], thread_type=1)
+                bot.send(msg, thread_id=config['group_id'], thread_type=ThreadType.GROUP)
                 print(f"[ZALO] ✅ Đã gửi vào nhóm")
         else:
             print(f"[ZALO] ⚠️ Chưa cấu hình đúng notify_mode hoặc thiếu ID")
@@ -326,15 +360,16 @@ def lookup_contacts():
 
     try:
         from zlapi import ZaloAPI
+        from zlapi.models import ThreadType
 
-        bot = ZaloAPI(config['imei'], config['cookies'])
+        bot = _create_bot(config)
 
         contacts = []
         groups = []
 
         # Get recent conversations (this returns both users and groups)
         try:
-            recent = bot.getRecentGroup(thread_type=0)
+            recent = bot.getRecentGroup(thread_type=ThreadType.USER)
             if recent and hasattr(recent, 'gridInfoMap'):
                 for uid, info in recent.gridInfoMap.items():
                     name = ''
@@ -348,7 +383,7 @@ def lookup_contacts():
 
         # Get groups
         try:
-            group_list = bot.getRecentGroup(thread_type=1)
+            group_list = bot.getRecentGroup(thread_type=ThreadType.GROUP)
             if group_list and hasattr(group_list, 'gridInfoMap'):
                 for gid, info in group_list.gridInfoMap.items():
                     name = ''
@@ -360,7 +395,7 @@ def lookup_contacts():
         except Exception as e:
             print(f"[ZALO] Warning getting groups: {e}")
 
-        # If above doesn't work, try getAllFriends and getGroupList
+        # If above doesn't work, try fetchAccountInfo
         if not contacts:
             try:
                 friends = bot.fetchAccountInfo()
@@ -397,9 +432,7 @@ def find_user_by_phone(phone):
         phone = '0' + phone[2:]
 
     try:
-        from zlapi import ZaloAPI
-
-        bot = ZaloAPI(config['imei'], config['cookies'])
+        bot = _create_bot(config)
         user_info = bot.fetchPhoneNumber(phone)
 
         if user_info and hasattr(user_info, 'uid'):
