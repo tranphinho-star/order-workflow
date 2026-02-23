@@ -1,2 +1,2 @@
 psycopg2-binary==2.9.9
-zlapi
+zlapi @ git+https://github.com/Its-VrxxDev/zlapi.git
