@@ -903,6 +903,40 @@
             document.getElementById('zalo-notify-mode').value = config.notify_mode || 'group';
             document.getElementById('zalo-user-id').value = config.user_id || '';
             document.getElementById('zalo-group-id').value = config.group_id || '';
+
+            // Show cookie expiration warning
+            const warningEl = document.getElementById('zalo-cookie-warning');
+            if (warningEl && config.cookies_set) {
+                const w = config.cookies_warning;
+                const age = config.cookies_age_days;
+                if (w === 'expired') {
+                    warningEl.style.display = 'block';
+                    warningEl.style.background = 'rgba(239,68,68,0.15)';
+                    warningEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                    warningEl.style.color = '#fca5a5';
+                    warningEl.innerHTML = `⚠️ <strong>Cookies đã hết hạn!</strong> (${age} ngày trước) — Vui lòng vào chat.zalo.me → extension → copy cookies mới → paste vào đây → Lưu`;
+                } else if (w === 'expiring_soon') {
+                    warningEl.style.display = 'block';
+                    warningEl.style.background = 'rgba(245,158,11,0.15)';
+                    warningEl.style.border = '1px solid rgba(245,158,11,0.4)';
+                    warningEl.style.color = '#fcd34d';
+                    warningEl.innerHTML = `⏳ <strong>Cookies sắp hết hạn</strong> (${age} ngày) — Nên cập nhật cookies mới sớm`;
+                } else if (w === 'ok') {
+                    warningEl.style.display = 'block';
+                    warningEl.style.background = 'rgba(34,197,94,0.1)';
+                    warningEl.style.border = '1px solid rgba(34,197,94,0.3)';
+                    warningEl.style.color = '#86efac';
+                    warningEl.innerHTML = `✅ Cookies còn mới (${age} ngày)`;
+                } else {
+                    warningEl.style.display = 'block';
+                    warningEl.style.background = 'rgba(156,163,175,0.1)';
+                    warningEl.style.border = '1px solid rgba(156,163,175,0.3)';
+                    warningEl.style.color = '#9ca3af';
+                    warningEl.innerHTML = `ℹ️ Chưa biết thời hạn cookies — Cập nhật cookies mới để bắt đầu theo dõi`;
+                }
+            } else if (warningEl) {
+                warningEl.style.display = 'none';
+            }
         } catch (err) {
             console.error('Load Zalo config failed:', err);
         }

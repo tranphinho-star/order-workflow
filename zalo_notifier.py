@@ -12,6 +12,7 @@ import json
 import os
 import threading
 import traceback
+from datetime import datetime, timezone
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 ZALO_CONFIG_FILE = os.path.join(DATA_DIR, 'zalo_config.json')
@@ -156,6 +157,28 @@ def get_config():
         safe['cookies'] = '***' + c[-10:] if len(c) > 10 else '***'
     else:
         safe['cookies_set'] = False
+
+    # Calculate cookie age for expiration warning
+    updated = config.get('cookies_updated_at', '')
+    if updated:
+        try:
+            updated_dt = datetime.fromisoformat(updated)
+            now = datetime.now(timezone.utc)
+            age_days = (now - updated_dt).total_seconds() / 86400
+            safe['cookies_age_days'] = round(age_days, 1)
+            if age_days > 5:
+                safe['cookies_warning'] = 'expired'
+            elif age_days > 3:
+                safe['cookies_warning'] = 'expiring_soon'
+            else:
+                safe['cookies_warning'] = 'ok'
+        except Exception:
+            safe['cookies_age_days'] = None
+            safe['cookies_warning'] = 'unknown'
+    else:
+        safe['cookies_age_days'] = None
+        safe['cookies_warning'] = 'unknown'
+
     return safe
 
 
@@ -169,9 +192,18 @@ def update_config(new_config):
         'user_id': '',
         'group_id': '',
     }
+    cookies_changed = False
     for key in ['enabled', 'imei', 'cookies', 'notify_mode', 'user_id', 'group_id']:
         if key in new_config:
+            if key == 'cookies' and new_config[key] and new_config[key] != config.get('cookies'):
+                cookies_changed = True
             config[key] = new_config[key]
+
+    # Track when cookies were last updated
+    if cookies_changed:
+        config['cookies_updated_at'] = datetime.now(timezone.utc).isoformat()
+        print(f"[ZALO] Cookies updated at {config['cookies_updated_at']}")
+
     _save_config(config)
     return config
 
