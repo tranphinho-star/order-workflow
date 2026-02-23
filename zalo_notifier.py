@@ -246,12 +246,20 @@ def _format_batch_message(orders):
 # ==================== ZLAPI HELPERS ====================
 
 def _parse_cookies(cookie_str):
-    """Parse raw cookie string into a dict for zlapi."""
+    """Parse cookies into a dict for zlapi. Supports JSON dict and raw string."""
     if isinstance(cookie_str, dict):
         return cookie_str
-    cookies = {}
     if not cookie_str:
-        return cookies
+        return {}
+    # Try JSON format first (from zlapi extension)
+    try:
+        parsed = json.loads(cookie_str)
+        if isinstance(parsed, dict):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Fall back to raw cookie string format (key=val; key=val)
+    cookies = {}
     for item in cookie_str.split(';'):
         item = item.strip()
         if '=' in item:
