@@ -278,16 +278,19 @@ def _create_bot(config):
 
     print(f"[ZALO] Creating bot with imei={imei[:20]}..., cookies keys={list(cookies_dict.keys())}")
 
-    # Disable auto_login to prevent phone/password fallback
-    # Then manually set session cookies
+    # Create bot without auto_login
     bot = ZaloAPI(
         "", "",
         imei,
         session_cookies=cookies_dict,
         auto_login=False
     )
-    bot.setSession(cookies_dict)
+    # Set cookies and manually call _state.login() to get secret_key
+    # This bypasses _client.login() which unnecessarily requires phone/password
+    bot._state.set_cookies(cookies_dict)
+    bot._state.login("", "", imei)
     bot._imei = imei
+    bot.uid = bot._state.user_id
     return bot
 
 
