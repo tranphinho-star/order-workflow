@@ -113,6 +113,8 @@
         document.getElementById('zalo-enabled')?.addEventListener('change', function () {
             document.getElementById('zalo-status-label').textContent = this.checked ? 'Đang bật ✅' : 'Đang tắt';
         });
+        document.getElementById('btn-zalo-find-phone')?.addEventListener('click', handleZaloFindPhone);
+        document.getElementById('btn-zalo-lookup')?.addEventListener('click', handleZaloLookup);
     }
 
     // ==================== ORDER LINES TABLE ====================
@@ -954,6 +956,71 @@
         } catch (err) {
             resultEl.style.color = '#f87171';
             resultEl.textContent = '❌ Lỗi kết nối: ' + err.message;
+        }
+    }
+
+    async function handleZaloFindPhone() {
+        const phone = document.getElementById('zalo-phone').value.trim();
+        if (!phone) { showToast('Vui lòng nhập số điện thoại', 'error'); return; }
+        const resultEl = document.getElementById('zalo-phone-result');
+        resultEl.style.display = 'block';
+        resultEl.style.color = 'var(--text-secondary)';
+        resultEl.textContent = '⏳ Đang tìm kiếm...';
+        try {
+            const res = await fetch(`${API_BASE}/zalo/find-phone`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                resultEl.style.color = '#4ade80';
+                resultEl.innerHTML = `✅ <b>${data.name || 'User'}</b> — ID: <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;cursor:pointer;" onclick="document.getElementById('zalo-user-id').value='${data.user_id}';this.parentElement.innerHTML+=' → Đã điền vào User ID!'">${data.user_id}</code> (click để điền)`;
+            } else {
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = '❌ ' + data.error;
+            }
+        } catch (err) {
+            resultEl.style.color = '#f87171';
+            resultEl.textContent = '❌ Lỗi: ' + err.message;
+        }
+    }
+
+    async function handleZaloLookup() {
+        const resultEl = document.getElementById('zalo-lookup-result');
+        resultEl.style.display = 'block';
+        resultEl.style.color = 'var(--text-secondary)';
+        resultEl.textContent = '⏳ Đang tải danh sách...';
+        try {
+            const res = await fetch(`${API_BASE}/zalo/lookup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            if (data.success) {
+                let html = '';
+                if (data.groups && data.groups.length) {
+                    html += '<b>👥 Nhóm:</b><br>';
+                    data.groups.forEach(g => {
+                        html += `<span style="cursor:pointer;color:#a78bfa;" onclick="document.getElementById('zalo-group-id').value='${g.id}'">  ${g.name || 'Nhóm'} → <code>${g.id}</code></span><br>`;
+                    });
+                }
+                if (data.contacts && data.contacts.length) {
+                    html += '<b>👤 Liên hệ:</b><br>';
+                    data.contacts.forEach(c => {
+                        html += `<span style="cursor:pointer;color:#a78bfa;" onclick="document.getElementById('zalo-user-id').value='${c.id}'">  ${c.name || 'User'} → <code>${c.id}</code></span><br>`;
+                    });
+                }
+                if (!html) html = 'Không tìm thấy nhóm hoặc liên hệ nào.';
+                resultEl.style.color = 'var(--text-primary)';
+                resultEl.innerHTML = html;
+            } else {
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = '❌ ' + data.error;
+            }
+        } catch (err) {
+            resultEl.style.color = '#f87171';
+            resultEl.textContent = '❌ Lỗi: ' + err.message;
         }
     }
 

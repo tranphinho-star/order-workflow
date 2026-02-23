@@ -679,6 +679,18 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             result = zalo_notifier.test_send()
             return self.send_json(result)
 
+        elif path == '/api/zalo/lookup':
+            result = zalo_notifier.lookup_contacts()
+            return self.send_json(result)
+
+        elif path == '/api/zalo/find-phone':
+            body = self.read_body()
+            phone = body.get('phone', '')
+            if not phone:
+                return self.send_json({'success': False, 'error': 'Vui lòng nhập số điện thoại'}, 400)
+            result = zalo_notifier.find_user_by_phone(phone)
+            return self.send_json(result)
+
         else:
             self.send_json({'error': 'Not found'}, 404)
 

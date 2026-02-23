@@ -353,7 +353,8 @@
             </div>
             <div class="form-group">
               <label>Cookies</label>
-              <textarea id="zalo-cookies" placeholder="Nhập Cookies từ tài khoản Zalo" class="form-input" rows="3" style="font-size:0.8rem;"></textarea>
+              <textarea id="zalo-cookies" placeholder="Nhập Cookies từ tài khoản Zalo" class="form-input" rows="3"
+                style="font-size:0.8rem;"></textarea>
             </div>
             <div class="form-group">
               <label>Chế độ gửi</label>
@@ -370,6 +371,24 @@
             <div class="form-group">
               <label>Group ID (Nhóm Zalo)</label>
               <input type="text" id="zalo-group-id" placeholder="ID nhóm Zalo" class="form-input">
+            </div>
+            <div
+              style="background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:8px;padding:16px;margin-bottom:16px;">
+              <label style="font-weight:600;color:var(--text-primary);display:block;margin-bottom:10px;">🔍 Tìm User ID
+                từ số điện thoại</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="zalo-phone" placeholder="VD: 0908996784" class="form-input"
+                  style="flex:1;margin-bottom:0;">
+                <button class="btn btn-primary btn-sm" id="btn-zalo-find-phone" style="white-space:nowrap;">🔍 Tìm
+                  ID</button>
+              </div>
+              <div id="zalo-phone-result" style="margin-top:8px;font-size:0.85rem;display:none;"></div>
+              <div style="margin-top:10px;">
+                <button class="btn btn-ghost btn-sm" id="btn-zalo-lookup" style="font-size:0.8rem;">📋 Xem DS nhóm &
+                  liên hệ gần đây</button>
+                <div id="zalo-lookup-result"
+                  style="margin-top:8px;font-size:0.85rem;display:none;max-height:200px;overflow-y:auto;"></div>
+              </div>
             </div>
             <div style="display:flex;gap:10px;margin-top:16px;">
               <button class="btn btn-primary btn-sm" id="btn-zalo-save">💾 Lưu cấu hình</button>

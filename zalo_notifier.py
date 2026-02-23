@@ -314,3 +314,109 @@ def test_send():
         return {'success': True, 'message': 'Đã gửi tin nhắn test!'}
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+
+def lookup_contacts():
+    """Use zlapi to list recent friends and groups with their IDs."""
+    config = _load_config()
+    if not config:
+        return {'success': False, 'error': 'Chưa cấu hình Zalo. Vui lòng nhập IMEI và Cookies trước.'}
+    if not config.get('imei') or not config.get('cookies'):
+        return {'success': False, 'error': 'Thiếu IMEI hoặc Cookies.'}
+
+    try:
+        from zlapi import ZaloAPI
+
+        bot = ZaloAPI(config['imei'], config['cookies'])
+
+        contacts = []
+        groups = []
+
+        # Get recent conversations (this returns both users and groups)
+        try:
+            recent = bot.getRecentGroup(thread_type=0)
+            if recent and hasattr(recent, 'gridInfoMap'):
+                for uid, info in recent.gridInfoMap.items():
+                    name = ''
+                    if hasattr(info, 'name'):
+                        name = info.name
+                    elif hasattr(info, 'displayName'):
+                        name = info.displayName
+                    contacts.append({'id': str(uid), 'name': str(name), 'type': 'user'})
+        except Exception as e:
+            print(f"[ZALO] Warning getting contacts: {e}")
+
+        # Get groups
+        try:
+            group_list = bot.getRecentGroup(thread_type=1)
+            if group_list and hasattr(group_list, 'gridInfoMap'):
+                for gid, info in group_list.gridInfoMap.items():
+                    name = ''
+                    if hasattr(info, 'name'):
+                        name = info.name
+                    elif hasattr(info, 'displayName'):
+                        name = info.displayName
+                    groups.append({'id': str(gid), 'name': str(name), 'type': 'group'})
+        except Exception as e:
+            print(f"[ZALO] Warning getting groups: {e}")
+
+        # If above doesn't work, try getAllFriends and getGroupList
+        if not contacts:
+            try:
+                friends = bot.fetchAccountInfo()
+                if friends:
+                    contacts.append({'id': str(friends.profile.get('userId', '')), 'name': 'Tài khoản hiện tại', 'type': 'self'})
+            except Exception:
+                pass
+
+        return {
+            'success': True,
+            'contacts': contacts[:20],  # Limit to 20
+            'groups': groups[:20],
+        }
+
+    except ImportError:
+        return {'success': False, 'error': 'zlapi chưa được cài đặt.'}
+    except Exception as e:
+        print(f"[ZALO] Lookup error: {e}")
+        traceback.print_exc()
+        return {'success': False, 'error': f'Lỗi kết nối Zalo: {str(e)}'}
+
+
+def find_user_by_phone(phone):
+    """Find Zalo user ID by phone number."""
+    config = _load_config()
+    if not config or not config.get('imei') or not config.get('cookies'):
+        return {'success': False, 'error': 'Thiếu IMEI hoặc Cookies. Lưu cấu hình trước.'}
+
+    # Normalize phone number
+    phone = phone.strip().replace(' ', '').replace('-', '')
+    if phone.startswith('+84'):
+        phone = '0' + phone[3:]
+    elif phone.startswith('84') and len(phone) > 9:
+        phone = '0' + phone[2:]
+
+    try:
+        from zlapi import ZaloAPI
+
+        bot = ZaloAPI(config['imei'], config['cookies'])
+        user_info = bot.fetchPhoneNumber(phone)
+
+        if user_info and hasattr(user_info, 'uid'):
+            uid = str(user_info.uid)
+            name = getattr(user_info, 'zalo_name', '') or getattr(user_info, 'display_name', '') or ''
+            return {
+                'success': True,
+                'user_id': uid,
+                'name': str(name),
+                'phone': phone,
+            }
+        else:
+            return {'success': False, 'error': f'Không tìm thấy tài khoản Zalo với SĐT: {phone}'}
+
+    except ImportError:
+        return {'success': False, 'error': 'zlapi chưa được cài đặt.'}
+    except Exception as e:
+        print(f"[ZALO] Phone lookup error: {e}")
+        traceback.print_exc()
+        return {'success': False, 'error': f'Lỗi tìm kiếm: {str(e)}'}
