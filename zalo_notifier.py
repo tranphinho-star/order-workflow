@@ -407,7 +407,6 @@ def lookup_contacts():
         try:
             all_groups = bot.fetchAllGroups()
             if all_groups:
-                # all_groups returns group IDs, fetch info for each
                 group_ids = []
                 if hasattr(all_groups, 'gridVerMap'):
                     group_ids = list(all_groups.gridVerMap.keys())
@@ -416,8 +415,10 @@ def lookup_contacts():
                 elif isinstance(all_groups, list):
                     group_ids = all_groups
 
-                # Fetch group info to get names
-                for gid in group_ids[:30]:
+                print(f"[ZALO] Found {len(group_ids)} groups total")
+
+                # Fetch group info in batches (fetchGroupInfo may accept single ID)
+                for gid in group_ids:
                     try:
                         ginfo = bot.fetchGroupInfo(gid)
                         if ginfo and hasattr(ginfo, 'gridInfoMap'):
@@ -447,8 +448,8 @@ def lookup_contacts():
 
         return {
             'success': True,
-            'contacts': contacts[:20],
-            'groups': groups[:30],
+            'contacts': contacts,
+            'groups': groups,
         }
 
     except ImportError:
