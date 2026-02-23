@@ -269,20 +269,24 @@ def _parse_cookies(cookie_str):
 
 
 def _create_bot(config):
-    """Create ZaloAPI bot instance with correct authentication."""
+    """Create ZaloAPI bot instance with cookie-based authentication."""
     from zlapi import ZaloAPI
 
     imei = config.get('imei', '')
     cookies_raw = config.get('cookies', '')
     cookies_dict = _parse_cookies(cookies_raw)
 
-    # zlapi requires phone + password as first 2 args
-    # When using cookie-based auth, pass empty strings
+    print(f"[ZALO] Creating bot with imei={imei[:20]}..., cookies keys={list(cookies_dict.keys())}")
+
+    # Disable auto_login to prevent phone/password fallback
+    # Then manually set session cookies
     bot = ZaloAPI(
         "", "",
-        imei=imei,
-        session_cookies=cookies_dict
+        imei,
+        session_cookies=cookies_dict,
+        auto_login=False
     )
+    bot.setSession(cookies_dict)
     return bot
 
 
