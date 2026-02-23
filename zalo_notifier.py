@@ -268,10 +268,10 @@ def _create_bot(config):
     cookies_raw = config.get('cookies', '')
     cookies_dict = _parse_cookies(cookies_raw)
 
-    # zlapi requires phone + password as first 2 args, even when using cookies
-    # Pass empty strings when authenticating with cookies only
+    # zlapi requires phone + password as first 2 args
+    # When using cookie-based auth, pass empty strings
     bot = ZaloAPI(
-        "<phone>", "<password>",
+        "", "",
         imei=imei,
         session_cookies=cookies_dict
     )
@@ -344,10 +344,30 @@ def test_send():
 
     message = "🔔 Test thông báo từ Order Workflow\n━━━━━━━━━━━━\n✅ Kết nối Zalo thành công!\n💡 Hệ thống sẽ gửi thông báo tự động khi có đơn hàng mới."
     try:
-        _do_send(message, config)
-        return {'success': True, 'message': 'Đã gửi tin nhắn test!'}
+        from zlapi.models import Message, ThreadType
+
+        bot = _create_bot(config)
+        msg = Message(text=message)
+        mode = config.get('notify_mode', 'group')
+
+        sent = False
+        if mode in ('user', 'both') and config.get('user_id'):
+            bot.send(msg, thread_id=config['user_id'], thread_type=ThreadType.USER)
+            sent = True
+        if mode in ('group', 'both') and config.get('group_id'):
+            bot.send(msg, thread_id=config['group_id'], thread_type=ThreadType.GROUP)
+            sent = True
+
+        if not sent:
+            return {'success': False, 'error': 'Chưa có User ID hoặc Group ID phù hợp với chế độ gửi hiện tại.'}
+        return {'success': True, 'message': 'Đã gửi tin nhắn test thành công!'}
+
+    except ImportError:
+        return {'success': False, 'error': 'zlapi chưa được cài đặt.'}
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        print(f"[ZALO] Test send error: {e}")
+        traceback.print_exc()
+        return {'success': False, 'error': f'Lỗi gửi Zalo: {str(e)}'}
 
 
 def lookup_contacts():
