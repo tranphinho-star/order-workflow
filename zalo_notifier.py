@@ -287,6 +287,7 @@ def _create_bot(config):
         auto_login=False
     )
     bot.setSession(cookies_dict)
+    bot._imei = imei
     return bot
 
 
