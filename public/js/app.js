@@ -535,6 +535,13 @@
             orders = orders.filter(o => o.status === filter);
         }
 
+        // Sort by pickup date ascending
+        orders = [...orders].sort((a, b) => {
+            const dateA = new Date(a.pickupDate || a.deliveryDate || '9999');
+            const dateB = new Date(b.pickupDate || b.deliveryDate || '9999');
+            return dateA - dateB;
+        });
+
         const tbody = document.getElementById('dashboard-tbody');
         const empty = document.getElementById('dashboard-empty');
 
@@ -544,18 +551,36 @@
             return;
         }
 
+        // Build color map for unique pickup dates
+        const dateColors = [
+            '#a78bfa', // purple
+            '#34d399', // emerald
+            '#fbbf24', // amber
+            '#60a5fa', // blue
+            '#f472b6', // pink
+            '#fb923c', // orange
+            '#2dd4bf', // teal
+            '#c084fc', // violet
+        ];
+        const uniqueDates = [...new Set(orders.map(o => formatDateShort(o.pickupDate || o.deliveryDate)))];
+        const dateColorMap = {};
+        uniqueDates.forEach((d, i) => { dateColorMap[d] = dateColors[i % dateColors.length]; });
+
         empty.style.display = 'none';
-        tbody.innerHTML = orders.map(o => `
+        tbody.innerHTML = orders.map(o => {
+            const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
+            const pickupColor = dateColorMap[pickupStr] || '#e2e8f0';
+            return `
       <tr>
         <td><strong>#${o.id}</strong></td>
         <td>${formatDateShort(o.orderDate || o.createdDate)}</td>
-        <td>${formatDateShort(o.pickupDate || o.deliveryDate)}</td>
+        <td style="color:${pickupColor};font-weight:600;">${pickupStr}</td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
         <td>${deliveryTypeBadge(o.deliveryType)}</td>
         <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${statusBadge(o.status)}</td>
-      </tr>
-    `).join('');
+      </tr>`;
+        }).join('');
     }
 
     // ==================== SALES VIEW ====================
