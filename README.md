@@ -27,9 +27,9 @@ python server.py
 
 | User | Password | Quyền |
 |------|----------|-------|
-| sale | *** | Tạo đơn hàng, xóa đơn chờ |
-| mixer | *** | Xác nhận sản xuất |
-| packing | *** | Xác nhận đóng gói, nhập số bao |
+| **** | *** | Tạo đơn hàng, xóa đơn chờ |
+| ***** | *** | Xác nhận sản xuất |
+| ******* | *** | Xác nhận đóng gói, nhập số bao |
 
 ---
 
