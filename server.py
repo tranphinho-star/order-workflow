@@ -515,7 +515,15 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
 
-        if path == '/api/last-update':
+        if path == '/health':
+            # Lightweight health check for cron-job pinging
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+            return
+
+        elif path == '/api/last-update':
             # Smart polling: returns timestamp from RAM, NO database query
             return self.send_json({'lastUpdate': last_update_time})
 
