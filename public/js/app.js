@@ -276,9 +276,8 @@
             document.getElementById('admin-pw-input').value = '';
             document.getElementById('admin-pw-error').style.display = 'none';
             switchView('dashboard');
-            // Load Zalo settings in guest/admin mode
-            document.getElementById('zalo-settings-section').style.display = 'block';
-            loadZaloConfig();
+            // Zalo settings will show only after admin password is verified
+            document.getElementById('zalo-settings-section').style.display = 'none';
         } else {
             if (navSales) navSales.style.display = '';
             if (navMixer) navMixer.style.display = '';
@@ -463,6 +462,9 @@
             document.getElementById('btn-refresh-users').style.display = '';
             document.getElementById('admin-pw-error').style.display = 'none';
             loadAdminUsers();
+            // Show Zalo settings after admin password verified
+            document.getElementById('zalo-settings-section').style.display = 'block';
+            loadZaloConfig();
         } else {
             document.getElementById('admin-pw-error').style.display = 'block';
             document.getElementById('admin-pw-input').value = '';
