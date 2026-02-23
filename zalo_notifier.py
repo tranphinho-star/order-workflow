@@ -16,6 +16,10 @@ from datetime import datetime, timezone
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 ZALO_CONFIG_FILE = os.path.join(DATA_DIR, 'zalo_config.json')
+ZALO_PENDING_FILE = os.path.join(DATA_DIR, 'zalo_pending.json')
+
+# Flag to avoid sending cookie reminder too often (once per day)
+_reminder_sent_date = None
 
 # Will be set by server.py at startup
 _database_url = None
@@ -29,7 +33,7 @@ def init(database_url=None):
 
 
 def _init_pg_table():
-    """Create zalo_config table in PostgreSQL if not exists."""
+    """Create zalo_config and pending_notifications tables in PostgreSQL if not exists."""
     try:
         import psycopg2
         url = _database_url
@@ -43,10 +47,17 @@ def _init_pg_table():
                 value TEXT
             )
         ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS zalo_pending_notifications (
+                id SERIAL PRIMARY KEY,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        ''')
         conn.commit()
         cur.close()
         conn.close()
-        print("[ZALO] PostgreSQL table 'zalo_config' ready")
+        print("[ZALO] PostgreSQL tables ready")
     except Exception as e:
         print(f"[ZALO] Warning: Could not init PG table: {e}")
 
@@ -202,9 +213,15 @@ def update_config(new_config):
     # Track when cookies were last updated
     if cookies_changed:
         config['cookies_updated_at'] = datetime.now(timezone.utc).isoformat()
+        config['reminder_sent'] = 'false'
         print(f"[ZALO] Cookies updated at {config['cookies_updated_at']}")
 
     _save_config(config)
+
+    # Flush pending notifications when new cookies are saved
+    if cookies_changed:
+        _flush_pending_queue(config)
+
     return config
 
 
@@ -326,12 +343,174 @@ def _create_bot(config):
     return bot
 
 
+# ==================== PENDING QUEUE ====================
+
+def _add_to_pending(message):
+    """Add a failed message to the pending queue."""
+    try:
+        if _database_url:
+            import psycopg2
+            url = _database_url
+            if url.startswith('postgres://'):
+                url = url.replace('postgres://', 'postgresql://', 1)
+            conn = psycopg2.connect(url, sslmode='require')
+            cur = conn.cursor()
+            cur.execute('INSERT INTO zalo_pending_notifications (message) VALUES (%s)', (message,))
+            conn.commit()
+            cur.close()
+            conn.close()
+        else:
+            pending = []
+            if os.path.exists(ZALO_PENDING_FILE):
+                with open(ZALO_PENDING_FILE, 'r', encoding='utf-8') as f:
+                    pending = json.load(f)
+            pending.append({'message': message, 'created_at': datetime.now(timezone.utc).isoformat()})
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(ZALO_PENDING_FILE, 'w', encoding='utf-8') as f:
+                json.dump(pending, f, ensure_ascii=False)
+        print(f"[ZALO] 📥 Đã lưu tin nhắn vào hàng đợi (cookies hết hạn)")
+    except Exception as e:
+        print(f"[ZALO] ❌ Lỗi lưu pending: {e}")
+
+
+def _get_pending_messages():
+    """Get all pending messages from queue."""
+    messages = []
+    try:
+        if _database_url:
+            import psycopg2
+            url = _database_url
+            if url.startswith('postgres://'):
+                url = url.replace('postgres://', 'postgresql://', 1)
+            conn = psycopg2.connect(url, sslmode='require')
+            cur = conn.cursor()
+            cur.execute('SELECT id, message FROM zalo_pending_notifications ORDER BY created_at')
+            messages = cur.fetchall()
+            cur.close()
+            conn.close()
+        else:
+            if os.path.exists(ZALO_PENDING_FILE):
+                with open(ZALO_PENDING_FILE, 'r', encoding='utf-8') as f:
+                    pending = json.load(f)
+                messages = [(i, p['message']) for i, p in enumerate(pending)]
+    except Exception as e:
+        print(f"[ZALO] Warning getting pending: {e}")
+    return messages
+
+
+def _clear_pending_queue():
+    """Clear all pending messages after successful send."""
+    try:
+        if _database_url:
+            import psycopg2
+            url = _database_url
+            if url.startswith('postgres://'):
+                url = url.replace('postgres://', 'postgresql://', 1)
+            conn = psycopg2.connect(url, sslmode='require')
+            cur = conn.cursor()
+            cur.execute('DELETE FROM zalo_pending_notifications')
+            conn.commit()
+            cur.close()
+            conn.close()
+        else:
+            if os.path.exists(ZALO_PENDING_FILE):
+                os.remove(ZALO_PENDING_FILE)
+        print("[ZALO] 🗑️ Đã xóa hàng đợi")
+    except Exception as e:
+        print(f"[ZALO] Warning clearing pending: {e}")
+
+
+def _flush_pending_queue(config):
+    """Send all pending messages after cookies are updated."""
+    pending = _get_pending_messages()
+    if not pending:
+        return
+    print(f"[ZALO] 📤 Đang gửi {len(pending)} tin nhắn đang chờ...")
+
+    def _do_flush():
+        try:
+            from zlapi.models import Message, ThreadType
+            bot = _create_bot(config)
+            mode = config.get('notify_mode', 'group')
+            sent_count = 0
+            for pid, message in pending:
+                try:
+                    msg = Message(text=message)
+                    if mode in ('user', 'both') and config.get('user_id'):
+                        bot.send(msg, thread_id=config['user_id'], thread_type=ThreadType.USER)
+                    if mode in ('group', 'both') and config.get('group_id'):
+                        bot.send(msg, thread_id=config['group_id'], thread_type=ThreadType.GROUP)
+                    sent_count += 1
+                except Exception as e:
+                    print(f"[ZALO] ⚠️ Lỗi gửi tin pending #{pid}: {e}")
+            _clear_pending_queue()
+            print(f"[ZALO] ✅ Đã gửi {sent_count}/{len(pending)} tin nhắn đang chờ")
+            # Notify user about flushed messages
+            try:
+                summary = Message(text=f"📬 Đã gửi {sent_count} đơn hàng đang chờ!\n━━━━━━━━━━━━\n✅ Cookies mới đã hoạt động.\n📋 {sent_count} thông báo đơn hàng đã được gửi bù.")
+                if config.get('user_id'):
+                    bot.send(summary, thread_id=config['user_id'], thread_type=ThreadType.USER)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[ZALO] ❌ Lỗi flush pending: {e}")
+            traceback.print_exc()
+
+    t = threading.Thread(target=_do_flush, daemon=True)
+    t.start()
+
+
+def _check_cookie_expiry_reminder(config):
+    """Send a reminder if cookies are about to expire (3+ days old). Max once per day."""
+    global _reminder_sent_date
+    updated = config.get('cookies_updated_at', '')
+    if not updated:
+        return
+
+    try:
+        updated_dt = datetime.fromisoformat(updated)
+        now = datetime.now(timezone.utc)
+        age_days = (now - updated_dt).total_seconds() / 86400
+
+        # Only remind when cookies are 3+ days old
+        if age_days < 3:
+            return
+
+        # Check if reminder already sent today
+        today = now.strftime('%Y-%m-%d')
+        if config.get('reminder_sent', '') == today:
+            return
+        if _reminder_sent_date == today:
+            return
+
+        # Send reminder
+        from zlapi.models import Message, ThreadType
+        bot = _create_bot(config)
+        days_str = f"{age_days:.1f}"
+        reminder = Message(text=f"⚠️ NHẮC CẬP NHẬT COOKIES\n━━━━━━━━━━━━\n⏳ Cookies đã {days_str} ngày tuổi, sắp hết hạn!\n\n📌 Vui lòng:\n1. Mở chat.zalo.me\n2. Click extension → copy cookies\n3. Paste vào Order Workflow → Lưu\n\n⏰ Chỉ mất 30 giây!")
+
+        if config.get('user_id'):
+            bot.send(reminder, thread_id=config['user_id'], thread_type=ThreadType.USER)
+            print(f"[ZALO] ⏰ Đã gửi nhắc cập nhật cookies ({days_str} ngày)")
+
+        # Mark reminder sent
+        _reminder_sent_date = today
+        config['reminder_sent'] = today
+        _save_config(config)
+
+    except Exception as e:
+        print(f"[ZALO] Warning cookie reminder: {e}")
+
+
 # ==================== SEND LOGIC ====================
 
 def _do_send(message, config):
     """Actually send the Zalo message. Runs in background thread."""
     try:
         from zlapi.models import Message, ThreadType
+
+        # Check if cookies are expiring and send reminder
+        _check_cookie_expiry_reminder(config)
 
         bot = _create_bot(config)
         msg = Message(text=message)
@@ -358,6 +537,9 @@ def _do_send(message, config):
     except Exception as e:
         print(f"[ZALO] ❌ Lỗi gửi tin nhắn: {e}")
         traceback.print_exc()
+        # Queue the message for later retry
+        _add_to_pending(message)
+        print(f"[ZALO] 📥 Tin nhắn đã được lưu vào hàng đợi, sẽ gửi khi cookies được cập nhật")
 
 
 def notify_new_order(order):
