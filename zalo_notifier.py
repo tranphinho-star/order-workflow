@@ -403,47 +403,52 @@ def lookup_contacts():
         contacts = []
         groups = []
 
-        # Get recent conversations (this returns both users and groups)
+        # Get all groups using fetchAllGroups
         try:
-            recent = bot.getRecentGroup(thread_type=ThreadType.USER)
-            if recent and hasattr(recent, 'gridInfoMap'):
-                for uid, info in recent.gridInfoMap.items():
-                    name = ''
-                    if hasattr(info, 'name'):
-                        name = info.name
-                    elif hasattr(info, 'displayName'):
-                        name = info.displayName
-                    contacts.append({'id': str(uid), 'name': str(name), 'type': 'user'})
-        except Exception as e:
-            print(f"[ZALO] Warning getting contacts: {e}")
+            all_groups = bot.fetchAllGroups()
+            if all_groups:
+                # all_groups returns group IDs, fetch info for each
+                group_ids = []
+                if hasattr(all_groups, 'gridVerMap'):
+                    group_ids = list(all_groups.gridVerMap.keys())
+                elif isinstance(all_groups, dict):
+                    group_ids = list(all_groups.keys())
+                elif isinstance(all_groups, list):
+                    group_ids = all_groups
 
-        # Get groups
-        try:
-            group_list = bot.getRecentGroup(thread_type=ThreadType.GROUP)
-            if group_list and hasattr(group_list, 'gridInfoMap'):
-                for gid, info in group_list.gridInfoMap.items():
-                    name = ''
-                    if hasattr(info, 'name'):
-                        name = info.name
-                    elif hasattr(info, 'displayName'):
-                        name = info.displayName
-                    groups.append({'id': str(gid), 'name': str(name), 'type': 'group'})
+                # Fetch group info to get names
+                for gid in group_ids[:30]:
+                    try:
+                        ginfo = bot.fetchGroupInfo(gid)
+                        if ginfo and hasattr(ginfo, 'gridInfoMap'):
+                            info = ginfo.gridInfoMap.get(str(gid)) or ginfo.gridInfoMap.get(gid)
+                            if info:
+                                name = getattr(info, 'name', '') or getattr(info, 'displayName', '') or str(gid)
+                                groups.append({'id': str(gid), 'name': str(name), 'type': 'group'})
+                            else:
+                                groups.append({'id': str(gid), 'name': str(gid), 'type': 'group'})
+                        else:
+                            groups.append({'id': str(gid), 'name': str(gid), 'type': 'group'})
+                    except Exception as e:
+                        groups.append({'id': str(gid), 'name': str(gid), 'type': 'group'})
+                        print(f"[ZALO] Warning fetching group {gid}: {e}")
         except Exception as e:
             print(f"[ZALO] Warning getting groups: {e}")
 
-        # If above doesn't work, try fetchAccountInfo
-        if not contacts:
-            try:
-                friends = bot.fetchAccountInfo()
-                if friends:
-                    contacts.append({'id': str(friends.profile.get('userId', '')), 'name': 'Tài khoản hiện tại', 'type': 'self'})
-            except Exception:
-                pass
+        # Get current account info
+        try:
+            account = bot.fetchAccountInfo()
+            if account and hasattr(account, 'profile'):
+                uid = account.profile.get('userId', '')
+                name = account.profile.get('displayName', 'Tài khoản hiện tại')
+                contacts.append({'id': str(uid), 'name': str(name), 'type': 'self'})
+        except Exception as e:
+            print(f"[ZALO] Warning getting account: {e}")
 
         return {
             'success': True,
-            'contacts': contacts[:20],  # Limit to 20
-            'groups': groups[:20],
+            'contacts': contacts[:20],
+            'groups': groups[:30],
         }
 
     except ImportError:
