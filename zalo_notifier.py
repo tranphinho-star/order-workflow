@@ -502,6 +502,92 @@ def _check_cookie_expiry_reminder(config):
         print(f"[ZALO] Warning cookie reminder: {e}")
 
 
+# ==================== COOKIE HEALTH CHECK ====================
+
+# Track last check to avoid checking too frequently
+_last_cookie_check = None
+_last_cookie_status = None
+
+def check_cookies_status():
+    """Check if cookies are still valid. Called by /health endpoint.
+    Runs in background to avoid blocking. Max once per 15 minutes."""
+    global _last_cookie_check, _last_cookie_status
+
+    config = _load_config()
+    if not config or not config.get('enabled') or not config.get('cookies'):
+        return 'unconfigured'
+
+    # Don't check more than once per 15 minutes
+    now = datetime.now(timezone.utc)
+    if _last_cookie_check:
+        elapsed = (now - _last_cookie_check).total_seconds()
+        if elapsed < 900:  # 15 minutes
+            return _last_cookie_status or 'unknown'
+
+    _last_cookie_check = now
+
+    # Run check in background thread
+    def _do_check():
+        global _last_cookie_status
+        try:
+            bot = _create_bot(config)
+            account = bot.fetchAccountInfo()
+            if account and hasattr(account, 'profile'):
+                _last_cookie_status = 'alive'
+                # Also check age and send reminder
+                _check_cookie_expiry_reminder(config)
+                print(f"[ZALO] ✅ Cookie check: ALIVE")
+
+                # Update status in config
+                config['cookies_status'] = 'alive'
+                config['cookies_last_check'] = now.isoformat()
+                _save_config(config)
+            else:
+                _last_cookie_status = 'dead'
+                _on_cookies_expired(config, now)
+        except Exception as e:
+            print(f"[ZALO] ❌ Cookie check: DEAD ({e})")
+            _last_cookie_status = 'dead'
+            _on_cookies_expired(config, now)
+
+    t = threading.Thread(target=_do_check, daemon=True)
+    t.start()
+
+    return _last_cookie_status or 'checking'
+
+
+def _on_cookies_expired(config, now):
+    """Handle cookie expiration: update status and try to send reminder."""
+    global _reminder_sent_date
+
+    today = now.strftime('%Y-%m-%d')
+    config['cookies_status'] = 'dead'
+    config['cookies_last_check'] = now.isoformat()
+
+    # Only notify once per day about expired cookies
+    if config.get('expired_notified') == today:
+        _save_config(config)
+        return
+
+    config['expired_notified'] = today
+    _save_config(config)
+
+    print(f"[ZALO] ⚠️ Cookies HẾT HẠN! Đang thử gửi nhắc nhở...")
+
+    # Try sending reminder - might fail if cookies are fully dead
+    # But sometimes cookies are partially expired (some APIs work, some don't)
+    try:
+        from zlapi.models import Message, ThreadType
+        bot = _create_bot(config)
+        reminder = Message(text="🚨 COOKIES ĐÃ HẾT HẠN!\n━━━━━━━━━━━━\n❌ Hệ thống không thể gửi thông báo đơn hàng!\n\n📌 Cần làm NGAY:\n1. Mở chat.zalo.me\n2. Click extension → copy cookies\n3. Paste vào Order Workflow → Lưu\n\n📥 Các đơn hàng mới sẽ được lưu vào hàng đợi và gửi bù khi có cookies mới.")
+
+        if config.get('user_id'):
+            bot.send(reminder, thread_id=config['user_id'], thread_type=ThreadType.USER)
+            print(f"[ZALO] ⏰ Đã gửi cảnh báo cookies hết hạn")
+    except Exception as e:
+        print(f"[ZALO] Không thể gửi nhắc (cookies đã hoàn toàn hết hạn): {e}")
+
+
 # ==================== SEND LOGIC ====================
 
 def _do_send(message, config):

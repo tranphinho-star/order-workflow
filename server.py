@@ -522,6 +522,11 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-Type', 'text/plain')
             self.end_headers()
             self.wfile.write(b'OK')
+            # Trigger Zalo cookie check in background (non-blocking)
+            try:
+                zalo_notifier.check_cookies_status()
+            except Exception:
+                pass
             return
 
         elif path == '/api/last-update':
