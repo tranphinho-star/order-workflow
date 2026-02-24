@@ -113,6 +113,7 @@
         document.getElementById('btn-week-prev')?.addEventListener('click', () => { dashboardWeekOffset--; renderDashboard(); });
         document.getElementById('btn-week-next')?.addEventListener('click', () => { dashboardWeekOffset++; renderDashboard(); });
         document.getElementById('btn-week-today')?.addEventListener('click', () => { dashboardWeekOffset = 0; renderDashboard(); });
+        document.getElementById('btn-weekly-report')?.addEventListener('click', sendWeeklyReport);
 
         // Zalo settings
         document.getElementById('btn-zalo-save')?.addEventListener('click', handleZaloSave);
@@ -652,11 +653,17 @@
             const overdueTag = isOverdue ? `<span style="color:#ef4444;font-size:11px;"> ⚠️ Trễ ${overdueDays} ngày</span>` : '';
             const lateNoteCell = isOverdue
                 ? (adminVerified
-                    ? `<td><div style="display:flex;gap:4px;align-items:center;">
-                        <input type="text" id="late-note-${o.id}" value="${esc(o.lateNote || '')}" placeholder="Nhập lý do..." style="flex:1;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:12px;">
+                    ? `<td><div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                        <select id="late-reason-${o.id}" style="padding:4px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:11px;">
+                            <option value="" ${!o.lateReason ? 'selected' : ''}>Nguyên nhân...</option>
+                            <option value="sales" ${o.lateReason === 'sales' ? 'selected' : ''}>Bán hàng</option>
+                            <option value="mixer" ${o.lateReason === 'mixer' ? 'selected' : ''}>Mixer</option>
+                            <option value="packing" ${o.lateReason === 'packing' ? 'selected' : ''}>Packing</option>
+                        </select>
+                        <input type="text" id="late-note-${o.id}" value="${esc(o.lateNote || '')}" placeholder="Chi tiết..." style="flex:1;min-width:80px;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:12px;">
                         <button onclick="app.saveLateNote(${o.id})" style="padding:4px 8px;border-radius:6px;background:#a78bfa;color:#fff;border:none;cursor:pointer;font-size:11px;white-space:nowrap;">Lưu</button>
-                       </div>${o.lateNote ? `<div style="margin-top:2px;font-size:11px;color:#fbbf24;">📝 ${esc(o.lateNote)}</div>` : ''}</td>`
-                    : `<td style="font-size:12px;color:#fbbf24;">${o.lateNote ? `📝 ${esc(o.lateNote)}` : '<span style="color:#666;">Nhập MK QT để ghi chú</span>'}</td>`)
+                       </div>${o.lateReason || o.lateNote ? `<div style="margin-top:2px;font-size:11px;color:#fbbf24;">${o.lateReason ? (o.lateReason === 'sales' ? '📝 Bán hàng' : o.lateReason === 'mixer' ? '🔧 Mixer' : '📦 Packing') : ''} ${esc(o.lateNote || '')}</div>` : ''}</td>`
+                    : `<td style="font-size:12px;color:#fbbf24;">${o.lateReason || o.lateNote ? `${o.lateReason ? (o.lateReason === 'sales' ? '📝 ' : o.lateReason === 'mixer' ? '🔧 ' : '📦 ') : ''}${esc(o.lateNote || o.lateReason || '')}` : '<span style="color:#666;">Nhập MK QT để ghi chú</span>'}</td>`)
                 : '<td></td>';
             return `
       <tr style="${rowStyle}">
@@ -979,13 +986,36 @@
     // ==================== HELPERS ====================
     async function saveLateNote(orderId) {
         const input = document.getElementById(`late-note-${orderId}`);
+        const reasonSelect = document.getElementById(`late-reason-${orderId}`);
         if (!input) return;
         const lateNote = input.value.trim();
+        const lateReason = reasonSelect ? reasonSelect.value : '';
         try {
-            await apiCall(`/orders/${orderId}/late-note`, 'PUT', { lateNote });
+            await apiCall(`/orders/${orderId}/late-note`, 'PUT', { lateNote, lateReason });
             showToast(`Đã lưu ghi chú trễ hẹn đơn #${orderId} ✅`, 'success');
             await loadData();
         } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+
+    async function sendWeeklyReport() {
+        const preview = document.getElementById('weekly-report-preview');
+        preview.style.display = 'block';
+        preview.innerHTML = 'Đang tạo báo cáo...';
+        try {
+            const res = await apiCall('/weekly-report', 'POST', { weekOffset: dashboardWeekOffset });
+            if (res.success) {
+                preview.innerHTML = `<div style="margin-bottom:12px;">
+                    ${res.sent ? `<span style="color:#10b981;">\u2705 \u0110\u00e3 g\u1eedi qua Zalo (${res.groups} nh\u00f3m)</span>` : `<span style="color:#fbbf24;">⚠\ufe0f ${res.note}</span>`}
+                </div><div style="border-top:1px solid var(--border);padding-top:12px;">${esc(res.message)}</div>`;
+                showToast(res.sent ? 'Đã gửi tổng kết tuần qua Zalo! 📊' : 'Xem trước báo cáo (Zalo chưa bật)', res.sent ? 'success' : 'info');
+            } else {
+                preview.innerHTML = `<span style="color:#ef4444;">❌ ${res.error}</span>`;
+                showToast(res.error, 'error');
+            }
+        } catch (err) {
+            preview.innerHTML = `<span style="color:#ef4444;">❌ Lỗi: ${err.message}</span>`;
             showToast(err.message, 'error');
         }
     }

@@ -228,6 +228,7 @@ class PgStore:
             ("silo_truck", "VARCHAR(200) DEFAULT ''"),
             ("delivery_type", "VARCHAR(50) DEFAULT 'Đại lý'"),
             ("late_note", "TEXT DEFAULT ''"),
+            ("late_reason", "VARCHAR(50) DEFAULT ''"),
         ]
         for col_name, col_type in new_columns:
             try:
@@ -313,6 +314,8 @@ class PgStore:
             d['deliveryType'] = row[27] or 'Đại lý'
         if len(row) > 28:
             d['lateNote'] = row[28] or ''
+        if len(row) > 29:
+            d['lateReason'] = row[29] or ''
         return d
 
     def get_orders(self):
@@ -467,10 +470,10 @@ class PgStore:
         cur.close()
         conn.close()
 
-    def update_late_note(self, order_id, late_note):
+    def update_late_note(self, order_id, late_note, late_reason=''):
         conn = self._conn()
         cur = conn.cursor()
-        cur.execute('UPDATE orders SET late_note=%s WHERE id=%s RETURNING *', (late_note, order_id))
+        cur.execute('UPDATE orders SET late_note=%s, late_reason=%s WHERE id=%s RETURNING *', (late_note, late_reason, order_id))
         row = cur.fetchone()
         conn.commit()
         cur.close()
@@ -709,6 +712,13 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             result = zalo_notifier.find_user_by_phone(phone)
             return self.send_json(result)
 
+        elif path == '/api/weekly-report':
+            body = self.read_body()
+            week_offset = body.get('weekOffset', -1)
+            orders = db.get_orders()
+            result = zalo_notifier.generate_and_send_weekly_report(orders, week_offset)
+            return self.send_json(result)
+
         else:
             self.send_json({'error': 'Not found'}, 404)
 
@@ -744,7 +754,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
         elif '/api/orders/' in path and path.endswith('/late-note'):
             order_id = int(path.split('/')[3])
             body = self.read_body()
-            order = db.update_late_note(order_id, body.get('lateNote', ''))
+            order = db.update_late_note(order_id, body.get('lateNote', ''), body.get('lateReason', ''))
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
             notify_update()

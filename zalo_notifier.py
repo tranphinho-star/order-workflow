@@ -710,6 +710,161 @@ def notify_mixer_confirmed(order):
     t.start()
 
 
+def generate_and_send_weekly_report(orders, week_offset=-1):
+    """Generate weekly performance report and send via Zalo.
+    Args:
+        orders: list of order dicts (from db.get_orders())
+        week_offset: -1 = last week, 0 = this week, etc.
+    Returns: dict with success status and report preview.
+    """
+    from datetime import datetime, timedelta
+
+    # Calculate week range (Monday to Sunday)
+    now = datetime.now()
+    day_of_week = now.weekday()  # 0=Monday
+    monday = now - timedelta(days=day_of_week) + timedelta(weeks=week_offset)
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    sunday = monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
+
+    # Filter orders by pickup date in this week
+    week_orders = []
+    for o in orders:
+        pickup = o.get('pickupDate') or o.get('deliveryDate') or ''
+        if not pickup:
+            continue
+        try:
+            pd = datetime.fromisoformat(pickup.replace('Z', '+00:00')) if 'T' in pickup else datetime.strptime(pickup, '%Y-%m-%d')
+            pd = pd.replace(tzinfo=None)
+            if monday <= pd <= sunday:
+                week_orders.append(o)
+        except Exception:
+            continue
+
+    if not week_orders:
+        return {'success': False, 'error': 'Không có đơn hàng nào trong tuần này.'}
+
+    # Calculate stats
+    total = len(week_orders)
+    completed = [o for o in week_orders if o.get('status') == 'Hoàn thành']
+    completed_count = len(completed)
+    in_progress = total - completed_count
+
+    # Late analysis
+    late_orders = [o for o in week_orders if o.get('lateNote') or o.get('lateReason')]
+    late_sales = len([o for o in late_orders if o.get('lateReason') == 'sales'])
+    late_mixer = len([o for o in late_orders if o.get('lateReason') == 'mixer'])
+    late_packing = len([o for o in late_orders if o.get('lateReason') == 'packing'])
+    on_time = total - len(late_orders)
+    on_time_pct = round((on_time / total) * 100) if total > 0 else 0
+
+    # Format week range
+    fmt = lambda d: d.strftime('%d/%m')
+    week_str = f"{fmt(monday)} - {fmt(sunday)}/{sunday.year}"
+
+    # Build positive message
+    msg = f"📊 TỔNG KẾT TUẦN {week_str}\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n\n"
+
+    # Overall stats
+    msg += f"📋 Tổng đơn hàng: {total}\n"
+    msg += f"✅ Hoàn thành: {completed_count}/{total}"
+    if completed_count == total:
+        msg += " 🎉 TUYỆT VỜI!\n"
+    else:
+        msg += f"\n⏳ Đang xử lý: {in_progress}\n"
+    msg += f"⏱️ Đúng hẹn: {on_time}/{total} ({on_time_pct}%)\n\n"
+
+    # Performance by team - always positive tone
+    msg += "👥 ĐÁNH GIÁ TỪNG BỘ PHẬN\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n\n"
+
+    # Sales team
+    msg += "📝 BỘ PHẬN BÁN HÀNG (Sales)\n"
+    if late_sales == 0:
+        msg += "   ⭐ Xuất sắc! Tất cả đơn hàng được đặt đúng kế hoạch.\n"
+    elif late_sales <= 2:
+        msg += f"   ✨ Tốt! Chỉ {late_sales} đơn cần điều chỉnh thời gian.\n"
+        msg += "   💪 Tiếp tục phối hợp chặt chẽ với kế hoạch SX!\n"
+    else:
+        msg += f"   📌 {late_sales} đơn cần cải thiện kế hoạch giao hàng.\n"
+        msg += "   💡 Gợi ý: Xác nhận năng lực SX trước khi hẹn khách.\n"
+    msg += "\n"
+
+    # Mixer team
+    msg += "🔧 BỘ PHẬN MIXER (Sản xuất)\n"
+    if late_mixer == 0:
+        msg += "   ⭐ Xuất sắc! Sản xuất đúng tiến độ 100%.\n"
+    elif late_mixer <= 2:
+        msg += f"   ✨ Tốt! {late_mixer} đơn chậm tiến độ nhẹ.\n"
+        msg += "   💪 Đội Mixer đã nỗ lực rất tốt!\n"
+    else:
+        msg += f"   📌 {late_mixer} đơn cần cải thiện tốc độ SX.\n"
+        msg += "   💡 Gợi ý: Kiểm tra công suất máy & lịch bảo trì.\n"
+    msg += "\n"
+
+    # Packing team
+    msg += "📦 BỘ PHẬN PACKING (Đóng gói)\n"
+    if late_packing == 0:
+        msg += "   ⭐ Xuất sắc! Đóng gói nhanh chóng, chính xác.\n"
+    elif late_packing <= 2:
+        msg += f"   ✨ Tốt! {late_packing} đơn đóng gói chậm nhẹ.\n"
+        msg += "   💪 Team Packing rất cố gắng!\n"
+    else:
+        msg += f"   📌 {late_packing} đơn cần cải thiện tốc độ đóng gói.\n"
+        msg += "   💡 Gợi ý: Chuẩn bị bao bì trước khi SX xong.\n"
+    msg += "\n"
+
+    # Closing message
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+    if on_time_pct >= 90:
+        msg += "🏆 KẾT QUẢ: XUẤT SẮC!\n"
+        msg += "🎯 Toàn bộ team phối hợp rất tốt tuần này.\n"
+    elif on_time_pct >= 70:
+        msg += "👍 KẾT QUẢ: TỐT!\n"
+        msg += "🎯 Tiếp tục phát huy và cải thiện thêm nhé!\n"
+    else:
+        msg += "💪 KẾT QUẢ: CẦN CỐ GẮNG THÊM!\n"
+        msg += "🎯 Cùng nhau phối hợp tốt hơn tuần tới nhé!\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += "🤝 Sales + Mixer + Packing = SỨC MẠNH TỔNG HỢP!\n"
+    msg += "💬 Order Workflow - CP Vietnam"
+
+    # Send via Zalo
+    config = _load_config()
+    if not config or not config.get('enabled'):
+        return {'success': True, 'message': msg, 'sent': False, 'note': 'Zalo chưa bật, chỉ xem trước báo cáo.'}
+
+    # Send to all configured destinations
+    group_ids = set()
+    if config.get('group_id'):
+        group_ids.add(config['group_id'])
+    group_ids.add(PACKING_MIXER_GROUP_ID)
+
+    def _send_report():
+        try:
+            from zlapi.models import Message, ThreadType
+            bot = _create_bot(config)
+            zalo_msg = Message(text=msg)
+            for gid in group_ids:
+                try:
+                    bot.send(zalo_msg, thread_id=gid, thread_type=ThreadType.GROUP)
+                    print(f"[ZALO] ✅ Đã gửi báo cáo tuần vào nhóm {gid}")
+                except Exception as e:
+                    print(f"[ZALO] ⚠️ Lỗi gửi vào nhóm {gid}: {e}")
+            # Also send to user (trưởng ca) if configured
+            if config.get('user_id'):
+                bot.send(zalo_msg, thread_id=config['user_id'], thread_type=ThreadType.USER)
+                print(f"[ZALO] ✅ Đã gửi báo cáo cho Trưởng ca")
+        except Exception as e:
+            print(f"[ZALO] ❌ Lỗi gửi báo cáo tuần: {e}")
+            traceback.print_exc()
+
+    t = threading.Thread(target=_send_report, daemon=True)
+    t.start()
+
+    return {'success': True, 'message': msg, 'sent': True, 'groups': len(group_ids)}
+
+
 def test_send():
     """Send a test message to verify Zalo configuration."""
     config = _load_config()

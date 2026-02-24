@@ -232,9 +232,15 @@
                 style="font-size:0.85rem;color:var(--text-secondary);min-width:200px;text-align:center;white-space:nowrap;"></span>
               <button class="btn btn-ghost btn-sm" id="btn-week-next" title="Tuần sau">▶</button>
               <button class="btn btn-primary btn-sm" id="btn-week-today" style="margin-left:4px;">Tuần này</button>
+              <button class="btn btn-ghost btn-sm" id="btn-weekly-report"
+                style="margin-left:8px;border-color:rgba(251,191,36,0.4);color:#fbbf24;"
+                title="Tạo và gửi báo cáo tổng kết tuần qua Zalo">📊 Gửi tổng kết</button>
             </div>
           </div>
           <div class="weekly-calendar" id="weekly-calendar"></div>
+          <div id="weekly-report-preview"
+            style="display:none;margin-top:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;white-space:pre-wrap;font-size:0.85rem;line-height:1.6;color:var(--text-primary);">
+          </div>
         </div>
 
         <div class="section">
