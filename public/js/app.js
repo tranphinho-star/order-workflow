@@ -567,7 +567,8 @@
     function renderWeeklyCalendar() {
         const { monday, sunday } = getWeekRange(dashboardWeekOffset);
         const dayNames = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-        const todayStr = new Date().toISOString().split('T')[0];
+        const toLocalDateStr = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const todayStr = toLocalDateStr(new Date());
         const now = new Date();
 
         // Update week range label
@@ -581,14 +582,14 @@
         for (let i = 0; i < 7; i++) {
             const d = new Date(monday);
             d.setDate(monday.getDate() + i);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = toLocalDateStr(d);
             const isToday = dateStr === todayStr;
 
             // Orders by pickup date for this day
             const dayOrders = allOrders.filter(o => {
                 const p = o.pickupDate || o.deliveryDate || '';
                 if (!p) return false;
-                return new Date(p).toISOString().split('T')[0] === dateStr;
+                return toLocalDateStr(new Date(p)) === dateStr;
             });
 
             const waiting = dayOrders.filter(o => o.status === 'Chờ sản xuất').length;
