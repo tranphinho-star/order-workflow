@@ -227,6 +227,7 @@ class PgStore:
             ("bag_farm", "INTEGER DEFAULT 0"),
             ("silo_truck", "VARCHAR(200) DEFAULT ''"),
             ("delivery_type", "VARCHAR(50) DEFAULT 'Đại lý'"),
+            ("late_note", "TEXT DEFAULT ''"),
         ]
         for col_name, col_type in new_columns:
             try:
@@ -310,6 +311,8 @@ class PgStore:
             d['siloTruck'] = row[26] or ''
         if len(row) > 27:
             d['deliveryType'] = row[27] or 'Đại lý'
+        if len(row) > 28:
+            d['lateNote'] = row[28] or ''
         return d
 
     def get_orders(self):
@@ -463,6 +466,16 @@ class PgStore:
         conn.commit()
         cur.close()
         conn.close()
+
+    def update_late_note(self, order_id, late_note):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('UPDATE orders SET late_note=%s WHERE id=%s RETURNING *', (late_note, order_id))
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return self._row_to_dict(row) if row else None
 
 
 def now_iso():
@@ -723,6 +736,15 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             order_id = int(path.split('/')[3])
             body = self.read_body()
             order = db.update_packing(order_id, body.get('packingBags', 0), body.get('packingNotes', ''), user['username'])
+            if not order:
+                return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
+            notify_update()
+            return self.send_json(order)
+
+        elif '/api/orders/' in path and path.endswith('/late-note'):
+            order_id = int(path.split('/')[3])
+            body = self.read_body()
+            order = db.update_late_note(order_id, body.get('lateNote', ''))
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
             notify_update()

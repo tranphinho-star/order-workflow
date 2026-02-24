@@ -14,6 +14,7 @@
     let lastKnownUpdate = 0;
     let autoRefreshInterval = null;
     const AUTO_REFRESH_SECONDS = 15;
+    let adminVerified = false;
 
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', init);
@@ -465,6 +466,8 @@
             // Show Zalo settings after admin password verified
             document.getElementById('zalo-settings-section').style.display = 'block';
             loadZaloConfig();
+            adminVerified = true;
+            renderDashboardTable(); // Re-render to show late note inputs
         } else {
             document.getElementById('admin-pw-error').style.display = 'block';
             document.getElementById('admin-pw-input').value = '';
@@ -548,18 +551,38 @@
         }
 
         empty.style.display = 'none';
+        const now = new Date();
         tbody.innerHTML = orders.map(o => {
             const pickupStr = formatDateShort(o.pickupDate || o.deliveryDate);
             const pickupColor = dateColorMap[pickupStr] || '#e2e8f0';
+            const pickupRaw = o.pickupDate || o.deliveryDate || '';
+            let overdueDays = 0;
+            let isOverdue = false;
+            if (pickupRaw && o.status !== 'Hoàn thành') {
+                const pickupDate = new Date(pickupRaw);
+                overdueDays = Math.floor((now - pickupDate) / (1000 * 60 * 60 * 24));
+                isOverdue = overdueDays > 3;
+            }
+            const rowStyle = isOverdue ? 'background:rgba(239,68,68,0.12);' : '';
+            const overdueTag = isOverdue ? `<span style="color:#ef4444;font-size:11px;"> ⚠️ Trễ ${overdueDays} ngày</span>` : '';
+            const lateNoteCell = isOverdue
+                ? (adminVerified
+                    ? `<td><div style="display:flex;gap:4px;align-items:center;">
+                        <input type="text" id="late-note-${o.id}" value="${esc(o.lateNote || '')}" placeholder="Nhập lý do..." style="flex:1;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:12px;">
+                        <button onclick="app.saveLateNote(${o.id})" style="padding:4px 8px;border-radius:6px;background:#a78bfa;color:#fff;border:none;cursor:pointer;font-size:11px;white-space:nowrap;">Lưu</button>
+                       </div>${o.lateNote ? `<div style="margin-top:2px;font-size:11px;color:#fbbf24;">📝 ${esc(o.lateNote)}</div>` : ''}</td>`
+                    : `<td style="font-size:12px;color:#fbbf24;">${o.lateNote ? `📝 ${esc(o.lateNote)}` : '<span style="color:#666;">Nhập MK QT để ghi chú</span>'}</td>`)
+                : '<td></td>';
             return `
-      <tr>
+      <tr style="${rowStyle}">
         <td><strong>#${o.id}</strong></td>
         <td>${formatDateShort(o.orderDate || o.createdDate)}</td>
-        <td style="color:${pickupColor};font-weight:600;">${pickupStr}</td>
+        <td style="color:${pickupColor};font-weight:600;">${pickupStr}${overdueTag}</td>
         <td><strong>${esc(o.productName || o.productCode)}</strong></td>
         <td>${deliveryTypeBadge(o.deliveryType)}</td>
         <td>${o.quantity || 0} ${unitLabel(o.deliveryType)}</td>
         <td>${statusBadge(o.status)}</td>
+        ${lateNoteCell}
       </tr>`;
         }).join('');
     }
@@ -869,6 +892,19 @@
     }
 
     // ==================== HELPERS ====================
+    async function saveLateNote(orderId) {
+        const input = document.getElementById(`late-note-${orderId}`);
+        if (!input) return;
+        const lateNote = input.value.trim();
+        try {
+            await apiCall(`/orders/${orderId}/late-note`, 'PUT', { lateNote });
+            showToast(`Đã lưu ghi chú trễ hẹn đơn #${orderId} ✅`, 'success');
+            await loadData();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+
     const DATE_COLORS = [
         '#a78bfa', '#34d399', '#fbbf24', '#60a5fa',
         '#f472b6', '#fb923c', '#2dd4bf', '#c084fc',
@@ -1121,5 +1157,6 @@
         deleteOrder,
         confirmMixer,
         confirmPacking,
+        saveLateNote,
     };
 })();
