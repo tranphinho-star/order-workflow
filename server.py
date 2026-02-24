@@ -714,6 +714,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             if not order:
                 return self.send_json({'error': 'Không tìm thấy đơn hàng'}, 404)
             notify_update()
+            zalo_notifier.notify_mixer_confirmed(order)
             return self.send_json(order)
 
         elif '/api/orders/' in path and path.endswith('/packing'):

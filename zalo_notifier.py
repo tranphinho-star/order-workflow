@@ -650,6 +650,66 @@ def notify_new_orders_batch(orders):
     t.start()
 
 
+# Group ID for "Packing và mixer"
+PACKING_MIXER_GROUP_ID = '1658934462778680543'
+
+
+def _format_mixer_confirmed_message(order):
+    """Format mixer confirmation into a Zalo message for Packing team."""
+    order_id = order.get('id', '?')
+    product = order.get('productName', '') or order.get('productCode', '') or '—'
+    pellet = order.get('pelletType', '') or ''
+    pickup = order.get('pickupDate', '') or order.get('deliveryDate', '') or '—'
+    delivery_type = order.get('deliveryType', '') or 'Đại lý'
+    quantity = order.get('quantity', 0) or 0
+    unit = 'Kg' if delivery_type == 'Xe silo' else 'Bao'
+    mixer_by = order.get('mixerConfirmedBy', '') or '—'
+    mixer_notes = order.get('mixerNotes', '') or ''
+
+    msg = f"✅ ĐÃ HOÀN THÀNH SẢN XUẤT #{order_id}\n"
+    msg += "━━━━━━━━━━━━\n"
+    msg += f"🏭 Tên cám: {product}\n"
+    if pellet:
+        msg += f"⚙️ Dạng: {pellet}\n"
+    msg += f"📅 Ngày lấy: {pickup}\n"
+    msg += f"🚚 Loại giao: {delivery_type}\n"
+    msg += f"📦 Số lượng: {quantity} {unit}\n"
+    msg += f"👷 Mixer: {mixer_by}\n"
+    if mixer_notes:
+        msg += f"📝 Ghi chú SX: {mixer_notes}\n"
+    msg += "━━━━━━━━━━━━\n"
+    msg += "📦 Sẵn sàng đóng gói!"
+    return msg
+
+
+def _do_send_to_group(message, config, group_id):
+    """Send Zalo message to a specific group. Runs in background thread."""
+    try:
+        from zlapi.models import Message, ThreadType
+
+        bot = _create_bot(config)
+        msg = Message(text=message)
+        bot.send(msg, thread_id=group_id, thread_type=ThreadType.GROUP)
+        print(f"[ZALO] ✅ Đã gửi vào nhóm (group_id: {group_id})")
+
+    except ImportError:
+        print("[ZALO] ❌ zlapi chưa được cài đặt. Chạy: pip install zlapi")
+    except Exception as e:
+        print(f"[ZALO] ❌ Lỗi gửi tin nhắn vào nhóm {group_id}: {e}")
+        traceback.print_exc()
+        _add_to_pending(message)
+
+
+def notify_mixer_confirmed(order):
+    """Send Zalo notification to 'Packing và mixer' group when mixer confirms. Non-blocking."""
+    config = _load_config()
+    if not config or not config.get('enabled'):
+        return
+    message = _format_mixer_confirmed_message(order)
+    t = threading.Thread(target=_do_send_to_group, args=(message, config, PACKING_MIXER_GROUP_ID), daemon=True)
+    t.start()
+
+
 def test_send():
     """Send a test message to verify Zalo configuration."""
     config = _load_config()
