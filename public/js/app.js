@@ -15,6 +15,7 @@
     let autoRefreshInterval = null;
     const AUTO_REFRESH_SECONDS = 15;
     let adminVerified = false;
+    let dashboardWeekOffset = 0; // 0 = current week, -1 = last week, etc.
 
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', init);
@@ -107,6 +108,11 @@
         // Modal
         document.getElementById('modal-close').addEventListener('click', closeModal);
         document.getElementById('modal-cancel').addEventListener('click', closeModal);
+
+        // Week navigation
+        document.getElementById('btn-week-prev')?.addEventListener('click', () => { dashboardWeekOffset--; renderDashboard(); });
+        document.getElementById('btn-week-next')?.addEventListener('click', () => { dashboardWeekOffset++; renderDashboard(); });
+        document.getElementById('btn-week-today')?.addEventListener('click', () => { dashboardWeekOffset = 0; renderDashboard(); });
 
         // Zalo settings
         document.getElementById('btn-zalo-save')?.addEventListener('click', handleZaloSave);
@@ -515,12 +521,36 @@
     }
 
     // ==================== DASHBOARD ====================
+    function getWeekRange(offset = 0) {
+        const now = new Date();
+        const day = now.getDay(); // 0=Sun, 1=Mon...
+        const diffToMon = day === 0 ? -6 : 1 - day;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + diffToMon + (offset * 7));
+        monday.setHours(0, 0, 0, 0);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+        return { monday, sunday };
+    }
+
+    function getOrdersInWeek(orders, offset) {
+        const { monday, sunday } = getWeekRange(offset);
+        return orders.filter(o => {
+            const pickup = o.pickupDate || o.deliveryDate || '';
+            if (!pickup) return false;
+            const d = new Date(pickup);
+            return d >= monday && d <= sunday;
+        });
+    }
+
     function renderDashboard() {
+        const weekOrders = getOrdersInWeek(allOrders, dashboardWeekOffset);
         const stats = {
-            total: allOrders.length,
-            waiting: allOrders.filter(o => o.status === 'Chờ sản xuất').length,
-            produced: allOrders.filter(o => o.status === 'Hoàn thành SX' || o.status === 'Đang sản xuất').length,
-            completed: allOrders.filter(o => o.status === 'Hoàn thành').length,
+            total: weekOrders.length,
+            waiting: weekOrders.filter(o => o.status === 'Chờ sản xuất').length,
+            produced: weekOrders.filter(o => o.status === 'Hoàn thành SX' || o.status === 'Đang sản xuất').length,
+            completed: weekOrders.filter(o => o.status === 'Hoàn thành').length,
         };
 
         document.getElementById('stat-total').textContent = stats.total;
@@ -528,12 +558,67 @@
         document.getElementById('stat-produced').textContent = stats.produced;
         document.getElementById('stat-completed').textContent = stats.completed;
 
+        renderWeeklyCalendar();
         renderDashboardTable();
+    }
+
+    function renderWeeklyCalendar() {
+        const { monday, sunday } = getWeekRange(dashboardWeekOffset);
+        const dayNames = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+        const todayStr = new Date().toISOString().split('T')[0];
+        const now = new Date();
+
+        // Update week range label
+        const fmtDate = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('week-range-label').textContent =
+            `${fmtDate(monday)} — ${fmtDate(sunday)}/${sunday.getFullYear()}`;
+
+        const container = document.getElementById('weekly-calendar');
+        let html = '';
+
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+            const isToday = dateStr === todayStr;
+
+            // Orders by pickup date for this day
+            const dayOrders = allOrders.filter(o => {
+                const p = o.pickupDate || o.deliveryDate || '';
+                if (!p) return false;
+                return new Date(p).toISOString().split('T')[0] === dateStr;
+            });
+
+            const waiting = dayOrders.filter(o => o.status === 'Chờ sản xuất').length;
+            const produced = dayOrders.filter(o => o.status === 'Hoàn thành SX' || o.status === 'Đang sản xuất').length;
+            const completed = dayOrders.filter(o => o.status === 'Hoàn thành').length;
+            const overdue = dayOrders.filter(o => {
+                if (o.status === 'Hoàn thành') return false;
+                return Math.floor((now - new Date(o.pickupDate || o.deliveryDate)) / 86400000) > 3;
+            }).length;
+
+            const classes = ['week-day-card'];
+            if (isToday) classes.push('today');
+            if (overdue > 0) classes.push('has-overdue');
+
+            html += `<div class="${classes.join(' ')}">
+                <div class="week-day-name">${dayNames[i]}</div>
+                <div class="week-day-date">${d.getDate()}</div>
+                <div class="week-day-orders">
+                    ${dayOrders.length > 0 ? `<span class="week-day-badge total-badge">${dayOrders.length} đơn</span>` : '<span style="font-size:0.7rem;color:var(--text-muted);">—</span>'}
+                    ${waiting > 0 ? `<span class="week-day-badge waiting">⏳ ${waiting}</span>` : ''}
+                    ${produced > 0 ? `<span class="week-day-badge produced">🔧 ${produced}</span>` : ''}
+                    ${completed > 0 ? `<span class="week-day-badge completed">✅ ${completed}</span>` : ''}
+                    ${overdue > 0 ? `<span class="week-day-badge overdue">⚠️ ${overdue} trễ</span>` : ''}
+                </div>
+            </div>`;
+        }
+        container.innerHTML = html;
     }
 
     function renderDashboardTable() {
         const filter = document.getElementById('filter-status').value;
-        let orders = allOrders;
+        let orders = getOrdersInWeek(allOrders, dashboardWeekOffset);
         if (filter) {
             orders = orders.filter(o => o.status === filter);
         }

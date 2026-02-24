@@ -222,9 +222,24 @@
           </div>
         </div>
 
+        <!-- Weekly Calendar View -->
+        <div class="section" id="weekly-calendar-section">
+          <div class="section-header" style="flex-wrap:wrap;gap:10px;">
+            <h3>📅 Lịch tuần</h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-ghost btn-sm" id="btn-week-prev" title="Tuần trước">◀</button>
+              <span id="week-range-label"
+                style="font-size:0.85rem;color:var(--text-secondary);min-width:200px;text-align:center;white-space:nowrap;"></span>
+              <button class="btn btn-ghost btn-sm" id="btn-week-next" title="Tuần sau">▶</button>
+              <button class="btn btn-primary btn-sm" id="btn-week-today" style="margin-left:4px;">Tuần này</button>
+            </div>
+          </div>
+          <div class="weekly-calendar" id="weekly-calendar"></div>
+        </div>
+
         <div class="section">
           <div class="section-header">
-            <h3>📋 Tất cả đơn hàng</h3>
+            <h3>📋 Đơn hàng trong tuần</h3>
             <div class="filter-bar">
               <select id="filter-status" class="select-filter">
                 <option value="">Tất cả trạng thái</option>

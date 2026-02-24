@@ -1673,3 +1673,89 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .toggle-switch input:checked + .toggle-slider::before {
   transform: translateX(22px);
 }
+
+/* ==================== WEEKLY CALENDAR ==================== */
+.weekly-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.week-day-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  text-align: center;
+  transition: var(--transition);
+  cursor: default;
+  min-height: 100px;
+}
+
+.week-day-card:hover {
+  border-color: var(--border-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.week-day-card.today {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px var(--accent-primary-glow);
+}
+
+.week-day-card.has-overdue {
+  border-color: var(--danger);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+.week-day-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.week-day-date {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.week-day-card.today .week-day-date {
+  color: var(--accent-primary);
+}
+
+.week-day-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.week-day-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.week-day-badge.waiting { background: var(--status-waiting-bg); color: var(--status-waiting); }
+.week-day-badge.produced { background: var(--status-produced-bg); color: var(--status-produced); }
+.week-day-badge.completed { background: var(--status-completed-bg); color: var(--status-completed); }
+.week-day-badge.total-badge { background: rgba(124,58,237,0.15); color: var(--accent-primary); font-size: 0.8rem; }
+.week-day-badge.overdue { background: var(--danger-bg); color: var(--danger); }
+
+@media (max-width: 768px) {
+  .weekly-calendar {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .weekly-calendar .week-day-card:nth-child(7) {
+    grid-column: 2;
+  }
+}
