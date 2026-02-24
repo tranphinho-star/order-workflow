@@ -719,6 +719,27 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
             result = zalo_notifier.generate_and_send_weekly_report(orders, week_offset)
             return self.send_json(result)
 
+        elif path == '/api/admin/delete-orders':
+            body = self.read_body()
+            if body.get('password') != ADMIN_PW:
+                return self.send_json({'error': 'Sai mật khẩu quản trị'}, 403)
+            ids = body.get('ids', [])
+            deleted = []
+            for oid in ids:
+                try:
+                    conn = db._conn()
+                    cur = conn.cursor()
+                    cur.execute('DELETE FROM orders WHERE id=%s', (int(oid),))
+                    if cur.rowcount > 0:
+                        deleted.append(oid)
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                except Exception:
+                    pass
+            notify_update()
+            return self.send_json({'success': True, 'deleted': deleted})
+
         else:
             self.send_json({'error': 'Not found'}, 404)
 
