@@ -721,7 +721,7 @@ class OrderHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == '/api/admin/delete-orders':
             body = self.read_body()
-            if body.get('password') != ADMIN_PW:
+            if body.get('password') != '2810':
                 return self.send_json({'error': 'Sai mật khẩu quản trị'}, 403)
             ids = body.get('ids', [])
             deleted = []
