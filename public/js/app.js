@@ -475,6 +475,7 @@
             loadZaloConfig();
             adminVerified = true;
             renderDashboardTable(); // Re-render to show late note inputs
+            document.getElementById('btn-weekly-report').style.display = '';
         } else {
             document.getElementById('admin-pw-error').style.display = 'block';
             document.getElementById('admin-pw-input').value = '';
