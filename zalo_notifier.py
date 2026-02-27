@@ -227,12 +227,25 @@ def update_config(new_config):
 
 # ==================== MESSAGE FORMATTING ====================
 
+def _format_pickup_date(date_str):
+    """Convert YYYY-MM-DD to dd/mm/yyyy for display."""
+    if not date_str or date_str == '—':
+        return date_str or '—'
+    try:
+        parts = date_str.split('-')
+        if len(parts) == 3:
+            return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    except Exception:
+        pass
+    return date_str
+
+
 def _format_order_message(order):
     """Format order info into a Zalo message."""
     order_id = order.get('id', '?')
     product = order.get('productName', '') or order.get('productCode', '') or '—'
     pellet = order.get('pelletType', '') or ''
-    pickup = order.get('pickupDate', '') or order.get('deliveryDate', '') or '—'
+    pickup = _format_pickup_date(order.get('pickupDate', '') or order.get('deliveryDate', '') or '—')
     delivery_type = order.get('deliveryType', '') or 'Đại lý'
     quantity = order.get('quantity', 0) or 0
     unit = 'Kg' if delivery_type == 'Xe silo' else 'Bao'
@@ -282,7 +295,7 @@ def _format_batch_message(orders):
         unit = 'Kg' if delivery_type == 'Xe silo' else 'Bao'
         msg += f"  #{order_id} | {product} | {quantity} {unit}\n"
 
-    pickup = orders[0].get('pickupDate', '') or '—'
+    pickup = _format_pickup_date(orders[0].get('pickupDate', '') or '—')
     created_by = orders[0].get('createdBy', '') or '—'
     msg += "━━━━━━━━━━━━\n"
     msg += f"📅 Ngày lấy: {pickup}\n"
@@ -659,7 +672,7 @@ def _format_mixer_confirmed_message(order):
     order_id = order.get('id', '?')
     product = order.get('productName', '') or order.get('productCode', '') or '—'
     pellet = order.get('pelletType', '') or ''
-    pickup = order.get('pickupDate', '') or order.get('deliveryDate', '') or '—'
+    pickup = _format_pickup_date(order.get('pickupDate', '') or order.get('deliveryDate', '') or '—')
     delivery_type = order.get('deliveryType', '') or 'Đại lý'
     quantity = order.get('quantity', 0) or 0
     unit = 'Kg' if delivery_type == 'Xe silo' else 'Bao'
